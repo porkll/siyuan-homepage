@@ -6,6 +6,7 @@
     import { onMount } from 'svelte';
     import ClockWidget from "./components/widgets/ClockWidget.svelte";
     import StatsWidget from "./components/widgets/StatsWidget.svelte";
+    import TaskWidget from "./components/widgets/TaskWidget.svelte";
     import WidgetConfigPanel from "./components/WidgetConfigPanel.svelte";
 
     export let app; // Used for future features
@@ -31,6 +32,13 @@
             name: '统计信息',
             component: StatsWidget,
             defaultLayout: { colSpan: 6, rowSpan: 2 },
+            defaultConfig: {}
+        },
+        'task': {
+            type: 'task',
+            name: '任务管理',
+            component: TaskWidget,
+            defaultLayout: { colSpan: 12, rowSpan: 4 },
             defaultConfig: {}
         }
     };
@@ -64,6 +72,14 @@
             enabled: true,
             config: {}
         },
+        {
+            id: 'task-1',
+            type: 'task',
+            colSpan: 12,
+            rowSpan: 4,
+            enabled: true,
+            config: {}
+        }
     ];
 
     let widgets = [...defaultWidgets];
@@ -192,7 +208,7 @@
                             <svg><use xlink:href="#iconMore"></use></svg>
                         </button>
                     </div>
-                    <svelte:component this={widget.component} colSpan={widget.colSpan} rowSpan={widget.rowSpan} />
+                    <svelte:component this={widget.component} colSpan={widget.colSpan} rowSpan={widget.rowSpan} {app} {plugin} />
                 </div>
             {/each}
         {/if}

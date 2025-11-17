@@ -1,0 +1,424 @@
+/**
+ * 任务管理工具函数
+ */
+
+import type {
+    Task,
+    TaskBlock,
+    TaskStatus,
+    TaskPriority,
+    TaskFilter,
+    Notebook,
+    SqlResponse
+} from '../types/task';
+
+// ==================== 配置 ====================
+
+/**
+ * 任务自定义属性配置
+ */
+export const TASK_ATTRS = {
+    STATUS: 'custom-task-status',
+    PRIORITY: 'custom-task-priority',
+    DUE_DATE: 'custom-task-duedate',
+} as const;
+
+// ==================== 数据转换 ====================
+
+/**
+ * 从 markdown 内容解析任务状态（仅处理标准 markdown）
+ */
+export function parseTaskStatus(markdown: string): { completed: boolean; status: TaskStatus } {
+    // 标准任务标记
+    if (markdown.startsWith('* [ ] ') || markdown.startsWith('- [ ] ')) {
+        return { completed: false, status: 'todo' };
+    }
+    if (markdown.startsWith('* [x] ') || markdown.startsWith('* [X] ') ||
+        markdown.startsWith('- [x] ') || markdown.startsWith('- [X] ')) {
+        return { completed: true, status: 'done' };
+    }
+
+    // 默认为待办
+    return { completed: false, status: 'todo' };
+}
+
+/**
+ * 从自定义属性中提取任务状态
+ */
+export function extractStatus(customAttrs: Record<string, any>, markdown: string): { completed: boolean; status: TaskStatus } {
+    const customStatus = customAttrs[TASK_ATTRS.STATUS];
+
+    // 如果有自定义状态属性，使用自定义状态
+    if (customStatus && ['todo', 'in-progress', 'review', 'done', 'archived'].includes(customStatus)) {
+        const status = customStatus as TaskStatus;
+        const completed = status === 'done' || status === 'archived';
+        return { completed, status };
+    }
+
+    // 否则从 markdown 解析
+    return parseTaskStatus(markdown);
+}
+
+/**
+ * 从属性字符串解析自定义属性
+ */
+export function parseCustomAttrs(ial: string): Record<string, any> {
+    const attrs: Record<string, any> = {};
+
+    if (!ial) return attrs;
+
+    // ial 格式: {: key1="value1" key2="value2"}
+    const matches = ial.matchAll(/([\w-]+)="([^"]*)"/g);
+    for (const match of matches) {
+        const [, key, value] = match;
+        attrs[key] = value;
+    }
+
+    return attrs;
+}
+
+/**
+ * 从自定义属性中提取优先级
+ */
+export function extractPriority(customAttrs: Record<string, any>): TaskPriority | undefined {
+    const priority = customAttrs[TASK_ATTRS.PRIORITY];
+    if (['low', 'medium', 'high', 'urgent'].includes(priority)) {
+        return priority as TaskPriority;
+    }
+    return undefined;
+}
+
+/**
+ * 从自定义属性中提取截止日期
+ */
+export function extractDueDate(customAttrs: Record<string, any>): Date | undefined {
+    const dueDate = customAttrs[TASK_ATTRS.DUE_DATE];
+    if (dueDate) {
+        const date = new Date(dueDate);
+        return isNaN(date.getTime()) ? undefined : date;
+    }
+    return undefined;
+}
+
+/**
+ * 将 TaskBlock 转换为标准化的 Task 对象
+ */
+export function transformTaskBlock(block: TaskBlock): Task {
+    const customAttrs = parseCustomAttrs(block.ial);
+    const { completed, status } = extractStatus(customAttrs, block.markdown);
+
+    // 提取内容（只取第一行，去除任务标记，避免包含子任务）
+    const firstLine = block.markdown.split('\n')[0];
+    const content = firstLine.replace(/^[*-]\s*\[[^\]]*\]\s*/, '').trim();
+
+    // 从 hpath 提取文档名称（最后一个 / 后面的部分）
+    const docName = block.hpath ? block.hpath.split('/').pop() || 'Untitled' : 'Untitled';
+
+    return {
+        id: block.id,
+        content,
+        markdown: block.markdown,
+
+        status,
+        completed,
+        priority: extractPriority(customAttrs),
+
+        createdAt: new Date(parseInt(block.created)),
+        updatedAt: new Date(parseInt(block.updated)),
+        dueDate: extractDueDate(customAttrs),
+        completedAt: completed ? new Date(parseInt(block.updated)) : undefined,
+
+        notebookId: block.box,
+        notebookName: block.boxName || block.box,
+        docId: block.root_id,
+        docName: docName,
+        docPath: block.hpath,
+
+        tags: [],
+        assignee: undefined,
+        progress: undefined,
+
+        customAttrs,
+        raw: block
+    };
+}
+
+/**
+ * 批量转换任务数据
+ */
+export function transformTasks(blocks: TaskBlock[]): Task[] {
+    return blocks.map(transformTaskBlock);
+}
+
+// ==================== 数据筛选 ====================
+
+/**
+ * 应用筛选器到任务列表
+ */
+export function applyFilter(tasks: Task[], filter: TaskFilter): Task[] {
+    let filtered = [...tasks];
+
+    // 笔记本筛选
+    if (filter.notebooks?.enabled && filter.notebooks.notebookIds.length > 0) {
+        if (filter.notebooks.mode === 'include') {
+            filtered = filtered.filter(task =>
+                filter.notebooks!.notebookIds.includes(task.notebookId)
+            );
+        } else {
+            filtered = filtered.filter(task =>
+                !filter.notebooks!.notebookIds.includes(task.notebookId)
+            );
+        }
+    }
+
+    // 状态筛选
+    if (filter.statuses && filter.statuses.length > 0) {
+        filtered = filtered.filter(task =>
+            filter.statuses!.includes(task.status)
+        );
+    }
+
+    // 优先级筛选
+    if (filter.priorities && filter.priorities.length > 0) {
+        filtered = filtered.filter(task =>
+            task.priority && filter.priorities!.includes(task.priority)
+        );
+    }
+
+    // 日期范围筛选
+    if (filter.dateRange?.enabled) {
+        if (filter.dateRange.mode === 'static' && filter.dateRange.staticRange) {
+            const { start, end } = filter.dateRange.staticRange;
+            filtered = filtered.filter(task => {
+                const compareDate = task.dueDate || task.createdAt;
+                return compareDate >= start && compareDate <= end;
+            });
+        } else if (filter.dateRange.mode === 'dynamic' && filter.dateRange.dynamicRange) {
+            const range = calculateDynamicDateRange(filter.dateRange.dynamicRange);
+            filtered = filtered.filter(task => {
+                const compareDate = task.dueDate || task.createdAt;
+                return compareDate >= range.start && compareDate <= range.end;
+            });
+        }
+    }
+
+    // 关键词搜索
+    if (filter.keyword) {
+        const keyword = filter.keyword.toLowerCase();
+        filtered = filtered.filter(task =>
+            task.content.toLowerCase().includes(keyword) ||
+            task.docName.toLowerCase().includes(keyword) ||
+            task.tags?.some(tag => tag.toLowerCase().includes(keyword))
+        );
+    }
+
+    // 标签筛选
+    if (filter.tags && filter.tags.length > 0) {
+        filtered = filtered.filter(task =>
+            task.tags?.some(tag => filter.tags!.includes(tag))
+        );
+    }
+
+    // 是否显示已完成
+    if (filter.showCompleted === false) {
+        filtered = filtered.filter(task => !task.completed);
+    }
+
+    return filtered;
+}
+
+/**
+ * 计算动态日期范围
+ */
+function calculateDynamicDateRange(range: string): { start: Date; end: Date } {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    switch (range) {
+        case 'today':
+            return {
+                start: today,
+                end: new Date(today.getTime() + 24 * 60 * 60 * 1000)
+            };
+
+        case 'thisWeek': {
+            const dayOfWeek = today.getDay();
+            const monday = new Date(today);
+            monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+            const sunday = new Date(monday);
+            sunday.setDate(monday.getDate() + 7);
+            return { start: monday, end: sunday };
+        }
+
+        case 'thisMonth': {
+            const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+            const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+            return { start: firstDay, end: lastDay };
+        }
+
+        case 'last7Days': {
+            const start = new Date(today);
+            start.setDate(today.getDate() - 7);
+            return { start, end: today };
+        }
+
+        case 'last30Days': {
+            const start = new Date(today);
+            start.setDate(today.getDate() - 30);
+            return { start, end: today };
+        }
+
+        default:
+            return { start: today, end: today };
+    }
+}
+
+// ==================== 数据排序 ====================
+
+/**
+ * 任务排序
+ */
+export function sortTasks(
+    tasks: Task[],
+    sortBy: 'created' | 'updated' | 'priority' | 'dueDate',
+    order: 'asc' | 'desc' = 'desc'
+): Task[] {
+    const sorted = [...tasks];
+
+    const priorityOrder: Record<TaskPriority, number> = {
+        urgent: 4,
+        high: 3,
+        medium: 2,
+        low: 1
+    };
+
+    sorted.sort((a, b) => {
+        let comparison = 0;
+
+        switch (sortBy) {
+            case 'created':
+                comparison = a.createdAt.getTime() - b.createdAt.getTime();
+                break;
+
+            case 'updated':
+                comparison = a.updatedAt.getTime() - b.updatedAt.getTime();
+                break;
+
+            case 'priority': {
+                const aPriority = a.priority ? priorityOrder[a.priority] : 0;
+                const bPriority = b.priority ? priorityOrder[b.priority] : 0;
+                comparison = aPriority - bPriority;
+                break;
+            }
+
+            case 'dueDate': {
+                const aTime = a.dueDate?.getTime() || Infinity;
+                const bTime = b.dueDate?.getTime() || Infinity;
+                comparison = aTime - bTime;
+                break;
+            }
+        }
+
+        return order === 'asc' ? comparison : -comparison;
+    });
+
+    return sorted;
+}
+
+// ==================== 数据分组 ====================
+
+/**
+ * 按状态分组
+ */
+export function groupByStatus(tasks: Task[]): Map<TaskStatus, Task[]> {
+    const groups = new Map<TaskStatus, Task[]>();
+
+    for (const task of tasks) {
+        if (!groups.has(task.status)) {
+            groups.set(task.status, []);
+        }
+        groups.get(task.status)!.push(task);
+    }
+
+    return groups;
+}
+
+/**
+ * 按笔记本分组
+ */
+export function groupByNotebook(tasks: Task[]): Map<string, Task[]> {
+    const groups = new Map<string, Task[]>();
+
+    for (const task of tasks) {
+        const key = task.notebookId;
+        if (!groups.has(key)) {
+            groups.set(key, []);
+        }
+        groups.get(key)!.push(task);
+    }
+
+    return groups;
+}
+
+/**
+ * 按优先级分组
+ */
+export function groupByPriority(tasks: Task[]): Map<TaskPriority | 'none', Task[]> {
+    const groups = new Map<TaskPriority | 'none', Task[]>();
+
+    for (const task of tasks) {
+        const key = task.priority || 'none';
+        if (!groups.has(key)) {
+            groups.set(key, []);
+        }
+        groups.get(key)!.push(task);
+    }
+
+    return groups;
+}
+
+// ==================== 统计信息 ====================
+
+/**
+ * 计算任务统计信息
+ */
+export function calculateStats(tasks: Task[]) {
+    const total = tasks.length;
+    const completed = tasks.filter(t => t.completed).length;
+    const inProgress = tasks.filter(t => t.status === 'in-progress').length;
+    const overdue = tasks.filter(t =>
+        t.dueDate && !t.completed && t.dueDate < new Date()
+    ).length;
+
+    return {
+        total,
+        completed,
+        inProgress,
+        overdue,
+        completionRate: total > 0 ? Math.round((completed / total) * 100) : 0
+    };
+}
+
+// ==================== SQL 查询构建 ====================
+
+/**
+ * 构建任务查询 SQL
+ */
+export function buildTaskQuery(filter?: TaskFilter): string {
+    let sql = "SELECT * FROM blocks WHERE type = 'i' AND subtype = 't'";
+
+    // 笔记本筛选
+    if (filter?.notebooks?.enabled && filter.notebooks.notebookIds.length > 0) {
+        const ids = filter.notebooks.notebookIds.map(id => `'${id}'`).join(',');
+        if (filter.notebooks.mode === 'include') {
+            sql += ` AND box IN (${ids})`;
+        } else {
+            sql += ` AND box NOT IN (${ids})`;
+        }
+    }
+
+    // 默认排序
+    sql += " ORDER BY created DESC LIMIT 2000";
+
+    return sql;
+}
