@@ -22,6 +22,7 @@ export const TASK_ATTRS = {
     STATUS: 'custom-task-status',
     PRIORITY: 'custom-task-priority',
     DUE_DATE: 'custom-task-duedate',
+    DAILY_TODO_HEADING: 'custom-daily-todo',
 } as const;
 
 // ==================== 数据转换 ====================

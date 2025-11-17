@@ -476,3 +476,30 @@ export async function version(): Promise<string> {
 export async function currentTime(): Promise<number> {
     return request('/api/system/currentTime', {});
 }
+
+// **************************************** Daily Note ****************************************
+
+/**
+ * 创建今日日记
+ * @param notebook 笔记本 ID
+ * @returns 创建的日记文档 ID
+ */
+export async function createDailyNote(notebook: NotebookId): Promise<{ id: DocumentId }> {
+    let data = {
+        notebook: notebook
+    };
+    let url = '/api/filetree/createDailyNote';
+    return request(url, data);
+}
+
+/**
+ * 获取文档信息
+ * @param id 文档 ID
+ * @returns 文档信息
+ */
+export async function getDocInfo(id: DocumentId): Promise<any> {
+    // 使用 SQL 查询获取文档信息
+    let sqlScript = `SELECT * FROM blocks WHERE id = '${id}' AND type = 'd'`;
+    let data = await sql(sqlScript);
+    return data[0];
+}

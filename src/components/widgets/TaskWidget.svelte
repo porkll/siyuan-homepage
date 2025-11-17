@@ -5,7 +5,7 @@
 <script lang="ts">
     import { onMount } from 'svelte';
     import { fetchPost, openTab } from 'siyuan';
-    import { ListTodo, RefreshCw, Eye, EyeOff, LayoutGrid } from 'lucide-svelte';
+    import { ListTodo, RefreshCw, Eye, EyeOff, LayoutGrid, Plus, Settings } from 'lucide-svelte';
     import type {
         Task,
         TaskViewType,
@@ -28,6 +28,8 @@
     import NotebookFilter from './task/NotebookFilter.svelte';
     import DateRangeSelector from './task/DateRangeSelector.svelte';
     import PriorityFilter from './task/PriorityFilter.svelte';
+    import AddTaskDialog from './task/AddTaskDialog.svelte';
+    import TaskSettingsDialog from './task/TaskSettingsDialog.svelte';
 
     export let app; // App 实例，用于打开文档
     export let plugin; // 插件实例，用于保存配置
@@ -106,6 +108,13 @@
     let loading = true;
     let error: string | null = null;
     let showSettings = false;
+    let showAddDialog = false;
+    let showSettingsDialog = false;
+
+    // 任务设置（日记笔记本等）
+    let taskSettings = {
+        dailyNoteNotebookId: '' // 日记笔记本ID
+    };
 
     // 统计信息
     $: stats = calculateStats(filteredTasks);
@@ -113,6 +122,7 @@
     // 加载配置
     onMount(async () => {
         await loadConfig();
+        await loadTaskSettings();
         await loadTasks();
 
         // 自动刷新
@@ -160,6 +170,31 @@
             await plugin.saveData(STORAGE_KEY, config);
         } catch (err) {
             console.error('Failed to save task widget config:', err);
+        }
+    }
+
+    // 加载任务设置
+    async function loadTaskSettings() {
+        if (!plugin) return;
+
+        try {
+            const savedSettings = await plugin.loadData('task-settings');
+            if (savedSettings) {
+                taskSettings = { ...taskSettings, ...savedSettings };
+            }
+        } catch (err) {
+            console.error('Failed to load task settings:', err);
+        }
+    }
+
+    // 保存任务设置
+    async function saveTaskSettings() {
+        if (!plugin) return;
+
+        try {
+            await plugin.saveData('task-settings', taskSettings);
+        } catch (err) {
+            console.error('Failed to save task settings:', err);
         }
     }
 
@@ -456,6 +491,165 @@
             console.error('Failed to archive task:', err);
         }
     }
+
+    // 处理添加新任务
+    function handleAddTask(event: CustomEvent) {
+        const { content, priority, dueDate } = event.detail;
+
+        // 1. 检查是否已设置日记笔记本
+        if (!taskSettings.dailyNoteNotebookId) {
+            alert('请先设置日记笔记本');
+            showSettingsDialog = true;
+            return;
+        }
+
+        const notebookId = taskSettings.dailyNoteNotebookId;
+
+        // 2. 创建或获取今日日记
+        fetchPost('/api/filetree/createDailyNote', {
+            notebook: notebookId
+        }, (dailyNote) => {
+            if (!dailyNote || dailyNote.code !== 0) {
+                alert('创建日记失败');
+                return;
+            }
+
+            const docId = dailyNote.data.id;
+
+            // 3. 查找或创建"待办"二级标题
+            fetchPost('/api/block/getChildBlocks', {
+                id: docId
+            }, (childBlocks) => {
+                let todoHeadingId = null;
+
+                if (childBlocks && childBlocks.code === 0 && childBlocks.data) {
+                    // 查找是否已存在"待办"标题（通过自定义属性）
+                    for (const block of childBlocks.data) {
+                        if (block.type === 'h' && block.ial && block.ial.includes(`${TASK_ATTRS.DAILY_TODO_HEADING}="true"`)) {
+                            todoHeadingId = block.id;
+                            break;
+                        }
+                    }
+                }
+
+                // 添加任务的函数
+                const addTaskToHeading = (headingId: string) => {
+                    // 构建任务 markdown
+                    let taskMarkdown = `- [ ] ${content}`;
+
+                    // 准备任务属性
+                    const attrs: Record<string, string> = {};
+                    if (priority) {
+                        attrs[TASK_ATTRS.PRIORITY] = priority;
+                    }
+                    if (dueDate) {
+                        attrs[TASK_ATTRS.DUE_DATE] = dueDate.toISOString();
+                    }
+
+                    // 在"待办"标题下添加任务
+                    fetchPost('/api/block/appendBlock', {
+                        dataType: 'markdown',
+                        data: taskMarkdown,
+                        parentID: headingId
+                    }, (insertResult) => {
+                        if (insertResult && insertResult.code === 0 && insertResult.data) {
+                            const taskId = insertResult.data[0]?.doOperations?.[0]?.id;
+
+                            // 设置属性
+                            if (taskId && Object.keys(attrs).length > 0) {
+                                fetchPost('/api/attr/setBlockAttrs', {
+                                    id: taskId,
+                                    attrs: attrs
+                                }, (attrResult) => {
+                                    if (attrResult && attrResult.code === 0) {
+                                        loadTasks();
+                                        fetchPost('/api/notification/pushMsg', {
+                                            msg: '✅ 任务已添加到今日日记',
+                                            timeout: 3000
+                                        });
+                                    } else {
+                                        fetchPost('/api/notification/pushErrMsg', {
+                                            msg: '❌ 设置任务属性失败',
+                                            timeout: 5000
+                                        });
+                                    }
+                                });
+                            } else {
+                                loadTasks();
+                                fetchPost('/api/notification/pushMsg', {
+                                    msg: '✅ 任务已添加到今日日记',
+                                    timeout: 3000
+                                });
+                            }
+                        } else {
+                            fetchPost('/api/notification/pushErrMsg', {
+                                msg: '❌ 插入任务失败',
+                                timeout: 5000
+                            });
+                        }
+                    });
+                };
+
+                // 如果没有找到"待办"标题，创建一个
+                if (!todoHeadingId) {
+                    fetchPost('/api/block/prependBlock', {
+                        dataType: 'markdown',
+                        data: '## 待办',
+                        parentID: docId
+                    }, (headingResult) => {
+                        if (headingResult && headingResult.code === 0 && headingResult.data) {
+                            const newHeadingId = headingResult.data[0]?.doOperations?.[0]?.id;
+
+                            if (newHeadingId) {
+                                // 给新创建的标题设置自定义属性
+                                fetchPost('/api/attr/setBlockAttrs', {
+                                    id: newHeadingId,
+                                    attrs: {
+                                        [TASK_ATTRS.DAILY_TODO_HEADING]: 'true'
+                                    }
+                                }, () => {
+                                    addTaskToHeading(newHeadingId);
+                                });
+                            }
+                        } else {
+                            fetchPost('/api/notification/pushErrMsg', {
+                                msg: '❌ 创建"待办"标题失败',
+                                timeout: 5000
+                            });
+                        }
+                    });
+                } else {
+                    addTaskToHeading(todoHeadingId);
+                }
+            });
+        });
+    }
+
+    // 打开添加任务对话框
+    function openAddDialog() {
+        showAddDialog = true;
+    }
+
+    // 关闭添加任务对话框
+    function closeAddDialog() {
+        showAddDialog = false;
+    }
+
+    // 打开设置对话框
+    function openSettingsDialog() {
+        showSettingsDialog = true;
+    }
+
+    // 关闭设置对话框
+    function closeSettingsDialog() {
+        showSettingsDialog = false;
+    }
+
+    // 保存设置
+    function handleSaveSettings(event: CustomEvent) {
+        taskSettings.dailyNoteNotebookId = event.detail.notebookId;
+        saveTaskSettings();
+    }
 </script>
 
 <div class="task-widget">
@@ -476,6 +670,12 @@
         </div>
 
         <div class="actions">
+            <!-- 新增任务按钮 -->
+            <button class="add-btn" on:click={openAddDialog} title="添加任务到今日日记">
+                <Plus size={14} />
+                新增
+            </button>
+
             <!-- 视图切换 -->
             <div class="view-switcher">
                 <button
@@ -503,6 +703,9 @@
                 {:else}
                     <EyeOff size={14} />
                 {/if}
+            </button>
+            <button class="icon-btn" on:click={openSettingsDialog} title="设置">
+                <Settings size={14} />
             </button>
         </div>
     </div>
@@ -610,6 +813,23 @@
             {/if}
         {/if}
     </div>
+
+    <!-- 添加任务对话框 -->
+    {#if showAddDialog}
+        <AddTaskDialog
+            on:submit={handleAddTask}
+            on:close={closeAddDialog}
+        />
+    {/if}
+
+    <!-- 设置对话框 -->
+    {#if showSettingsDialog}
+        <TaskSettingsDialog
+            currentNotebookId={taskSettings.dailyNoteNotebookId}
+            on:save={handleSaveSettings}
+            on:close={closeSettingsDialog}
+        />
+    {/if}
 </div>
 
 <style>
@@ -681,6 +901,26 @@
         display: flex;
         gap: 8px;
         align-items: center;
+    }
+
+    .add-btn {
+        padding: 4px 12px;
+        border: none;
+        background: var(--b3-theme-primary);
+        color: white;
+        cursor: pointer;
+        border-radius: 4px;
+        font-size: 13px;
+        font-weight: 500;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .add-btn:hover {
+        opacity: 0.9;
+        transform: translateY(-1px);
     }
 
     .view-switcher {
