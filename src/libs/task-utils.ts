@@ -8,6 +8,7 @@ import type {
     TaskStatus,
     TaskPriority,
     TaskFilter,
+    QuickFilterType,
     Notebook,
     SqlResponse
 } from '../types/task';
@@ -101,6 +102,25 @@ export function extractDueDate(customAttrs: Record<string, any>): Date | undefin
 }
 
 /**
+ * 将思源时间戳（14位字符串：yyyyMMddHHmmss）转换为 Date 对象
+ */
+export function parseSiyuanTimestamp(timestamp: string): Date {
+    // 思源时间戳格式：20251117123456 (yyyyMMddHHmmss)
+    if (!timestamp || timestamp.length !== 14) {
+        return new Date();
+    }
+
+    const year = parseInt(timestamp.substring(0, 4));
+    const month = parseInt(timestamp.substring(4, 6)) - 1; // 月份从0开始
+    const day = parseInt(timestamp.substring(6, 8));
+    const hour = parseInt(timestamp.substring(8, 10));
+    const minute = parseInt(timestamp.substring(10, 12));
+    const second = parseInt(timestamp.substring(12, 14));
+
+    return new Date(year, month, day, hour, minute, second);
+}
+
+/**
  * 将 TaskBlock 转换为标准化的 Task 对象
  */
 export function transformTaskBlock(block: TaskBlock): Task {
@@ -123,10 +143,10 @@ export function transformTaskBlock(block: TaskBlock): Task {
         completed,
         priority: extractPriority(customAttrs),
 
-        createdAt: new Date(parseInt(block.created)),
-        updatedAt: new Date(parseInt(block.updated)),
+        createdAt: parseSiyuanTimestamp(block.created),
+        updatedAt: parseSiyuanTimestamp(block.updated),
         dueDate: extractDueDate(customAttrs),
-        completedAt: completed ? new Date(parseInt(block.updated)) : undefined,
+        completedAt: completed ? parseSiyuanTimestamp(block.updated) : undefined,
 
         notebookId: block.box,
         notebookName: block.boxName || block.box,
@@ -153,10 +173,60 @@ export function transformTasks(blocks: TaskBlock[]): Task[] {
 // ==================== 数据筛选 ====================
 
 /**
+ * 检查日期是否为今天
+ */
+function isToday(date: Date): boolean {
+    const today = new Date();
+    const isSameDay = date.getFullYear() === today.getFullYear() &&
+           date.getMonth() === today.getMonth() &&
+           date.getDate() === today.getDate();
+
+    // 调试日志
+    if (isSameDay) {
+        console.log('[今日筛选] 匹配到今日任务:', {
+            date: date.toLocaleString(),
+            today: today.toLocaleString(),
+            year: date.getFullYear(),
+            month: date.getMonth(),
+            day: date.getDate()
+        });
+    }
+
+    return isSameDay;
+}
+
+/**
  * 应用筛选器到任务列表
  */
 export function applyFilter(tasks: Task[], filter: TaskFilter): Task[] {
     let filtered = [...tasks];
+
+    // 快捷筛选
+    if (filter.quickFilter === 'today') {
+        console.log('[今日筛选] 开始筛选，总任务数:', tasks.length);
+        console.log('[今日筛选] 当前日期:', new Date().toLocaleString());
+
+        // 今日筛选：今天创建的或今天到期的任务
+        filtered = filtered.filter(task => {
+            const createdToday = isToday(task.createdAt);
+            const dueToday = task.dueDate && isToday(task.dueDate);
+            const match = createdToday || dueToday;
+
+            if (!match) {
+                console.log('[今日筛选] 任务不匹配:', {
+                    content: task.content.substring(0, 30),
+                    createdAt: task.createdAt.toLocaleString(),
+                    dueDate: task.dueDate?.toLocaleString(),
+                    createdToday,
+                    dueToday
+                });
+            }
+
+            return match;
+        });
+
+        console.log('[今日筛选] 筛选完成，匹配任务数:', filtered.length);
+    }
 
     // 笔记本筛选
     if (filter.notebooks?.enabled && filter.notebooks.notebookIds.length > 0) {
@@ -185,21 +255,36 @@ export function applyFilter(tasks: Task[], filter: TaskFilter): Task[] {
         );
     }
 
-    // 日期范围筛选
-    if (filter.dateRange?.enabled) {
-        if (filter.dateRange.mode === 'static' && filter.dateRange.staticRange) {
-            const { start, end } = filter.dateRange.staticRange;
-            filtered = filtered.filter(task => {
-                const compareDate = task.dueDate || task.createdAt;
-                return compareDate >= start && compareDate <= end;
-            });
-        } else if (filter.dateRange.mode === 'dynamic' && filter.dateRange.dynamicRange) {
-            const range = calculateDynamicDateRange(filter.dateRange.dynamicRange);
-            filtered = filtered.filter(task => {
-                const compareDate = task.dueDate || task.createdAt;
-                return compareDate >= range.start && compareDate <= range.end;
-            });
-        }
+    // 创建日期筛选
+    if (filter.dateFilters?.created?.enabled) {
+        const { start, end } = filter.dateFilters.created;
+        filtered = filtered.filter(task => {
+            const createdDate = task.createdAt;
+            if (start && createdDate < start) return false;
+            if (end) {
+                // 结束日期包含当天的 23:59:59
+                const endOfDay = new Date(end);
+                endOfDay.setHours(23, 59, 59, 999);
+                if (createdDate > endOfDay) return false;
+            }
+            return true;
+        });
+    }
+
+    // 截止日期筛选
+    if (filter.dateFilters?.dueDate?.enabled) {
+        const { start, end } = filter.dateFilters.dueDate;
+        filtered = filtered.filter(task => {
+            if (!task.dueDate) return false; // 没有截止日期的任务不显示
+            const dueDate = task.dueDate;
+            if (start && dueDate < start) return false;
+            if (end) {
+                const endOfDay = new Date(end);
+                endOfDay.setHours(23, 59, 59, 999);
+                if (dueDate > endOfDay) return false;
+            }
+            return true;
+        });
     }
 
     // 关键词搜索
@@ -225,52 +310,6 @@ export function applyFilter(tasks: Task[], filter: TaskFilter): Task[] {
     }
 
     return filtered;
-}
-
-/**
- * 计算动态日期范围
- */
-function calculateDynamicDateRange(range: string): { start: Date; end: Date } {
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-    switch (range) {
-        case 'today':
-            return {
-                start: today,
-                end: new Date(today.getTime() + 24 * 60 * 60 * 1000)
-            };
-
-        case 'thisWeek': {
-            const dayOfWeek = today.getDay();
-            const monday = new Date(today);
-            monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-            const sunday = new Date(monday);
-            sunday.setDate(monday.getDate() + 7);
-            return { start: monday, end: sunday };
-        }
-
-        case 'thisMonth': {
-            const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-            const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-            return { start: firstDay, end: lastDay };
-        }
-
-        case 'last7Days': {
-            const start = new Date(today);
-            start.setDate(today.getDate() - 7);
-            return { start, end: today };
-        }
-
-        case 'last30Days': {
-            const start = new Date(today);
-            start.setDate(today.getDate() - 30);
-            return { start, end: today };
-        }
-
-        default:
-            return { start: today, end: today };
-    }
 }
 
 // ==================== 数据排序 ====================

@@ -10,6 +10,7 @@
         TaskViewType,
         TaskWidgetConfig,
         TaskFilter,
+        QuickFilterType,
         KanbanColumn,
         TaskStatus,
         SqlResponse
@@ -24,6 +25,8 @@
     } from '../../libs/task-utils';
     import KanbanView from './task/KanbanView.svelte';
     import NotebookFilter from './task/NotebookFilter.svelte';
+    import DateRangeSelector from './task/DateRangeSelector.svelte';
+    import PriorityFilter from './task/PriorityFilter.svelte';
 
     export let app; // App 实例，用于打开文档
     export let plugin; // 插件实例，用于保存配置
@@ -79,6 +82,7 @@
             }
         },
         filter: {
+            quickFilter: 'all',
             notebooks: {
                 enabled: false,
                 mode: 'include',
@@ -124,6 +128,24 @@
             const savedConfig = await plugin.loadData(STORAGE_KEY);
             if (savedConfig) {
                 config = { ...DEFAULT_CONFIG, ...savedConfig };
+
+                // 将日期字符串转换回 Date 对象
+                if (config.filter.dateFilters?.created) {
+                    if (config.filter.dateFilters.created.start) {
+                        config.filter.dateFilters.created.start = new Date(config.filter.dateFilters.created.start);
+                    }
+                    if (config.filter.dateFilters.created.end) {
+                        config.filter.dateFilters.created.end = new Date(config.filter.dateFilters.created.end);
+                    }
+                }
+                if (config.filter.dateFilters?.dueDate) {
+                    if (config.filter.dateFilters.dueDate.start) {
+                        config.filter.dateFilters.dueDate.start = new Date(config.filter.dateFilters.dueDate.start);
+                    }
+                    if (config.filter.dateFilters.dueDate.end) {
+                        config.filter.dateFilters.dueDate.end = new Date(config.filter.dateFilters.dueDate.end);
+                    }
+                }
             }
         } catch (err) {
             console.error('Failed to load task widget config:', err);
@@ -304,22 +326,52 @@
         updateFilteredTasks();
         saveConfig();
     }
+
+    // 设置快捷筛选
+    function setQuickFilter(filter: QuickFilterType) {
+        config.filter.quickFilter = filter;
+        updateFilteredTasks();
+        saveConfig();
+    }
+
+    // 处理创建日期筛选变化
+    function handleCreatedDateChange(event: CustomEvent) {
+        if (!config.filter.dateFilters) {
+            config.filter.dateFilters = {};
+        }
+        config.filter.dateFilters.created = event.detail;
+        updateFilteredTasks();
+        saveConfig();
+    }
+
+    // 处理截止日期筛选变化
+    function handleDueDateChange(event: CustomEvent) {
+        if (!config.filter.dateFilters) {
+            config.filter.dateFilters = {};
+        }
+        config.filter.dateFilters.dueDate = event.detail;
+        updateFilteredTasks();
+        saveConfig();
+    }
+
+    // 处理优先级筛选变化
+    function handlePriorityChange(event: CustomEvent) {
+        config.filter.priorities = event.detail;
+        updateFilteredTasks();
+        saveConfig();
+    }
 </script>
 
 <div class="task-widget">
     <!-- 头部 -->
     <div class="widget-header">
         <div class="title-section">
-            <h3 class="widget-title">📝 任务管理</h3>
+            <h3 class="widget-title">📝 任务</h3>
             {#if config.preferences?.showStats}
                 <div class="stats-badges">
-                    <span class="badge total">总计 {stats.total}</span>
-                    <span class="badge progress">进行中 {stats.inProgress}</span>
-                    <span class="badge completed">完成 {stats.completed}</span>
-                    {#if stats.overdue > 0}
-                        <span class="badge overdue">逾期 {stats.overdue}</span>
-                    {/if}
-                    <span class="badge rate">完成率 {stats.completionRate}%</span>
+                    <span class="badge total">{stats.total}</span>
+                    <span class="badge progress">{stats.inProgress}</span>
+                    <span class="badge completed">{stats.completed}</span>
                 </div>
             {/if}
         </div>
@@ -335,24 +387,6 @@
                 >
                     📊
                 </button>
-                <button
-                    class="view-btn"
-                    class:active={config.currentView === 'list'}
-                    on:click={() => switchView('list')}
-                    title="列表视图"
-                    disabled
-                >
-                    📋
-                </button>
-                <button
-                    class="view-btn"
-                    class:active={config.currentView === 'calendar'}
-                    on:click={() => switchView('calendar')}
-                    title="日历视图"
-                    disabled
-                >
-                    📅
-                </button>
             </div>
 
             <!-- 操作按钮 -->
@@ -367,26 +401,63 @@
             >
                 {config.filter.showCompleted ? '👁️' : '🙈'}
             </button>
-            <button
-                class="icon-btn"
-                class:active={showSettings}
-                on:click={() => showSettings = !showSettings}
-                title="设置"
-            >
-                ⚙️
-            </button>
         </div>
     </div>
 
-    <!-- 筛选区域 -->
-    {#if showSettings}
-        <div class="settings-panel">
+    <!-- 筛选栏 -->
+    <div class="filter-bar">
+        <!-- 快捷筛选 -->
+        <div class="quick-filters">
+            <button
+                class="filter-chip"
+                class:active={config.filter.quickFilter === 'all'}
+                on:click={() => setQuickFilter('all')}
+            >
+                全部
+            </button>
+            <button
+                class="filter-chip"
+                class:active={config.filter.quickFilter === 'today'}
+                on:click={() => setQuickFilter('today')}
+            >
+                📅 今日
+            </button>
+        </div>
+
+        <!-- 笔记本筛选 -->
+        <div class="notebook-filter-wrapper">
             <NotebookFilter
                 filter={config.filter.notebooks || { enabled: false, mode: 'include', notebookIds: [] }}
                 on:change={handleNotebookFilterChange}
             />
         </div>
-    {/if}
+
+        <!-- 创建日期筛选 -->
+        <div class="date-filter-wrapper">
+            <DateRangeSelector
+                placeholder="创建日期"
+                filter={config.filter.dateFilters?.created || { enabled: false }}
+                on:change={handleCreatedDateChange}
+            />
+        </div>
+
+        <!-- 截止日期筛选 -->
+        <div class="date-filter-wrapper">
+            <DateRangeSelector
+                placeholder="截止日期"
+                filter={config.filter.dateFilters?.dueDate || { enabled: false }}
+                on:change={handleDueDateChange}
+            />
+        </div>
+
+        <!-- 优先级筛选 -->
+        <div class="priority-filter-wrapper">
+            <PriorityFilter
+                selectedPriorities={config.filter.priorities || []}
+                on:change={handlePriorityChange}
+            />
+        </div>
+    </div>
 
     <!-- 内容区域 -->
     <div class="widget-content">
@@ -446,41 +517,43 @@
     }
 
     .widget-header {
-        padding: 16px;
+        padding: 10px 12px;
         border-bottom: 1px solid var(--b3-border-color);
         background: var(--b3-theme-surface);
         display: flex;
         justify-content: space-between;
         align-items: center;
-        gap: 16px;
+        gap: 12px;
         flex-wrap: wrap;
     }
 
     .title-section {
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: 8px;
         flex-wrap: wrap;
     }
 
     .widget-title {
         margin: 0;
-        font-size: 18px;
+        font-size: 14px;
         font-weight: 600;
         color: var(--b3-theme-on-surface);
     }
 
     .stats-badges {
         display: flex;
-        gap: 8px;
+        gap: 6px;
         flex-wrap: wrap;
     }
 
     .badge {
-        padding: 4px 10px;
-        border-radius: 12px;
-        font-size: 12px;
-        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 11px;
+        font-weight: 500;
+        min-width: 24px;
+        text-align: center;
     }
 
     .badge.total {
@@ -498,16 +571,6 @@
         color: #065f46;
     }
 
-    .badge.overdue {
-        background: #fee2e2;
-        color: #991b1b;
-    }
-
-    .badge.rate {
-        background: #f3e8ff;
-        color: #6b21a8;
-    }
-
     .actions {
         display: flex;
         gap: 8px;
@@ -523,12 +586,12 @@
     }
 
     .view-btn {
-        padding: 6px 12px;
+        padding: 4px 10px;
         border: none;
         background: none;
         cursor: pointer;
         border-radius: 4px;
-        font-size: 16px;
+        font-size: 14px;
         transition: all 0.2s;
         opacity: 0.6;
     }
@@ -541,7 +604,7 @@
     .view-btn.active {
         opacity: 1;
         background: var(--b3-theme-primary);
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
     }
 
     .view-btn:disabled {
@@ -550,12 +613,12 @@
     }
 
     .icon-btn {
-        padding: 6px 10px;
+        padding: 4px 8px;
         border: 1px solid var(--b3-border-color);
         background: var(--b3-theme-background);
         cursor: pointer;
         border-radius: 4px;
-        font-size: 16px;
+        font-size: 14px;
         transition: all 0.2s;
     }
 
@@ -568,10 +631,78 @@
         border-color: var(--b3-theme-primary);
     }
 
-    .settings-panel {
-        padding: 16px;
+    /* 筛选栏样式 */
+    .filter-bar {
+        padding: 8px 12px;
         border-bottom: 1px solid var(--b3-border-color);
+        background: var(--b3-theme-background);
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        overflow-x: auto;
+        overflow-y: hidden;
+        flex-wrap: nowrap;
+    }
+
+    .filter-bar::-webkit-scrollbar {
+        height: 4px;
+    }
+
+    .filter-bar::-webkit-scrollbar-thumb {
         background: var(--b3-theme-surface);
+        border-radius: 2px;
+    }
+
+    .filter-bar::-webkit-scrollbar-thumb:hover {
+        background: var(--b3-theme-primary-lighter);
+    }
+
+    .quick-filters {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        flex-shrink: 0;
+    }
+
+    .filter-chip {
+        padding: 4px 12px;
+        border: 1px solid var(--b3-border-color);
+        background: var(--b3-theme-surface);
+        cursor: pointer;
+        border-radius: 16px;
+        font-size: 12px;
+        transition: all 0.2s;
+        white-space: nowrap;
+    }
+
+    .filter-chip:hover {
+        background: var(--b3-theme-primary-lighter);
+        border-color: var(--b3-theme-primary);
+    }
+
+    .filter-chip.active {
+        background: var(--b3-theme-primary);
+        color: white;
+        border-color: var(--b3-theme-primary);
+    }
+
+    .notebook-filter-wrapper {
+        min-width: 280px;
+        width: 300px;
+        max-width: 40%;
+        flex-shrink: 0;
+    }
+
+    .date-filter-wrapper {
+        min-width: 180px;
+        width: 200px;
+        flex-shrink: 0;
+    }
+
+    .priority-filter-wrapper {
+        min-width: 160px;
+        width: 180px;
+        flex-shrink: 0;
     }
 
     .widget-content {

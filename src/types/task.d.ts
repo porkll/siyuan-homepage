@@ -150,24 +150,36 @@ export interface NotebookFilter {
 }
 
 /**
- * 日期范围筛选
+ * 日期范围筛选（单个日期类型）
  */
 export interface DateRangeFilter {
     enabled: boolean;
-    mode: 'static' | 'dynamic';
-    // 静态日期范围
-    staticRange?: {
-        start: Date;
-        end: Date;
-    };
-    // 动态日期范围
-    dynamicRange?: 'today' | 'thisWeek' | 'thisMonth' | 'last7Days' | 'last30Days';
+    start?: Date;
+    end?: Date;
 }
+
+/**
+ * 所有日期筛选配置
+ */
+export interface DateFilters {
+    // 创建日期筛选
+    created?: DateRangeFilter;
+    // 截止日期筛选
+    dueDate?: DateRangeFilter;
+}
+
+/**
+ * 快捷筛选类型
+ */
+export type QuickFilterType = 'all' | 'today';
 
 /**
  * 任务筛选器
  */
 export interface TaskFilter {
+    // 快捷筛选
+    quickFilter?: QuickFilterType;
+
     // 笔记本筛选
     notebooks?: NotebookFilter;
 
@@ -178,7 +190,7 @@ export interface TaskFilter {
     priorities?: TaskPriority[];
 
     // 日期筛选
-    dateRange?: DateRangeFilter;
+    dateFilters?: DateFilters;
 
     // 关键词搜索
     keyword?: string;

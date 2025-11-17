@@ -1,6 +1,6 @@
 <!--
-  笔记本筛选组件
-  支持选择/排除笔记本进行任务筛选
+  笔记本筛选组件 - 下拉多选样式
+  已选择的笔记本显示为标签，可快速移除
 -->
 <script lang="ts">
     import { createEventDispatcher, onMount } from 'svelte';
@@ -19,12 +19,22 @@
 
     let notebooks: Notebook[] = [];
     let loading = true;
-    let showPanel = false;
+    let showDropdown = false;
     let searchKeyword = '';
+    let containerRef: HTMLDivElement;
 
     // 加载笔记本列表
     onMount(() => {
         loadNotebooks();
+
+        // 点击外部关闭下拉框
+        const handleClickOutside = (event: MouseEvent) => {
+            if (containerRef && !containerRef.contains(event.target as Node)) {
+                showDropdown = false;
+            }
+        };
+        document.addEventListener('click', handleClickOutside);
+        return () => document.removeEventListener('click', handleClickOutside);
     });
 
     function loadNotebooks() {
@@ -41,43 +51,33 @@
         }
     }
 
-    // 筛选后的笔记本列表
+    // 筛选后的笔记本列表（未选中的）
     $: filteredNotebooks = notebooks.filter(nb =>
-        nb.name.toLowerCase().includes(searchKeyword.toLowerCase())
+        nb.name.toLowerCase().includes(searchKeyword.toLowerCase()) &&
+        !filter.notebookIds.includes(nb.id)
     );
 
-    // 切换笔记本选中状态
-    function toggleNotebook(notebookId: string) {
-        const index = filter.notebookIds.indexOf(notebookId);
-        if (index > -1) {
-            filter.notebookIds = filter.notebookIds.filter(id => id !== notebookId);
-        } else {
+    // 已选择的笔记本
+    $: selectedNotebooks = notebooks.filter(nb =>
+        filter.notebookIds.includes(nb.id)
+    );
+
+    // 添加笔记本
+    function addNotebook(notebookId: string) {
+        if (!filter.notebookIds.includes(notebookId)) {
             filter.notebookIds = [...filter.notebookIds, notebookId];
+            filter.enabled = true;
+            searchKeyword = '';
+            emitChange();
         }
-        emitChange();
     }
 
-    // 全选
-    function selectAll() {
-        filter.notebookIds = notebooks.map(nb => nb.id);
-        emitChange();
-    }
-
-    // 清空选择
-    function clearAll() {
-        filter.notebookIds = [];
-        emitChange();
-    }
-
-    // 切换模式
-    function toggleMode() {
-        filter.mode = filter.mode === 'include' ? 'exclude' : 'include';
-        emitChange();
-    }
-
-    // 切换启用状态
-    function toggleEnabled() {
-        filter.enabled = !filter.enabled;
+    // 移除笔记本
+    function removeNotebook(notebookId: string) {
+        filter.notebookIds = filter.notebookIds.filter(id => id !== notebookId);
+        if (filter.notebookIds.length === 0) {
+            filter.enabled = false;
+        }
         emitChange();
     }
 
@@ -85,76 +85,49 @@
         dispatch('change', { ...filter });
     }
 
-    // 获取选中数量
-    $: selectedCount = filter.notebookIds.length;
-    $: isAllSelected = selectedCount === notebooks.length && notebooks.length > 0;
+    function toggleDropdown() {
+        showDropdown = !showDropdown;
+        if (showDropdown) {
+            searchKeyword = '';
+        }
+    }
 </script>
 
-<div class="notebook-filter">
-    <!-- 筛选器摘要 -->
-    <div class="filter-summary">
-        <button
-            class="toggle-btn"
-            class:active={filter.enabled}
-            on:click={toggleEnabled}
-            title={filter.enabled ? '停用筛选' : '启用筛选'}
-        >
-            <span class="icon">{filter.enabled ? '🔍' : '⭕'}</span>
-            <span class="text">笔记本筛选</span>
-            {#if filter.enabled && selectedCount > 0}
-                <span class="badge">
-                    {filter.mode === 'include' ? '包含' : '排除'} {selectedCount}
-                </span>
+<div class="notebook-filter" bind:this={containerRef}>
+    <!-- 多选输入框 -->
+    <div class="select-input" on:click={toggleDropdown}>
+        <div class="selected-tags">
+            {#if selectedNotebooks.length === 0}
+                <span class="placeholder">选择笔记本...</span>
+            {:else}
+                {#each selectedNotebooks as notebook (notebook.id)}
+                    <span class="tag">
+                        <span class="tag-icon">{notebook.icon || '📓'}</span>
+                        <span class="tag-name">{notebook.name}</span>
+                        <button
+                            class="tag-remove"
+                            on:click|stopPropagation={() => removeNotebook(notebook.id)}
+                            title="移除"
+                        >
+                            ×
+                        </button>
+                    </span>
+                {/each}
             {/if}
-        </button>
-
-        <button
-            class="expand-btn"
-            on:click={() => showPanel = !showPanel}
-            title={showPanel ? '收起' : '展开'}
-        >
-            {showPanel ? '▲' : '▼'}
-        </button>
+        </div>
+        <span class="dropdown-arrow">{showDropdown ? '▲' : '▼'}</span>
     </div>
 
-    <!-- 筛选面板 -->
-    {#if showPanel}
-        <div class="filter-panel">
-            <!-- 工具栏 -->
-            <div class="toolbar">
-                <div class="mode-switch">
-                    <button
-                        class="mode-btn"
-                        class:active={filter.mode === 'include'}
-                        on:click={() => { filter.mode = 'include'; emitChange(); }}
-                    >
-                        包含模式
-                    </button>
-                    <button
-                        class="mode-btn"
-                        class:active={filter.mode === 'exclude'}
-                        on:click={() => { filter.mode = 'exclude'; emitChange(); }}
-                    >
-                        排除模式
-                    </button>
-                </div>
-
-                <div class="actions">
-                    <button class="action-btn" on:click={selectAll}>
-                        全选
-                    </button>
-                    <button class="action-btn" on:click={clearAll}>
-                        清空
-                    </button>
-                </div>
-            </div>
-
+    <!-- 下拉列表 -->
+    {#if showDropdown}
+        <div class="dropdown-panel">
             <!-- 搜索框 -->
             <div class="search-box">
                 <input
                     type="text"
                     placeholder="搜索笔记本..."
                     bind:value={searchKeyword}
+                    on:click|stopPropagation
                 />
             </div>
 
@@ -164,32 +137,21 @@
                     <div class="loading">加载中...</div>
                 {:else if filteredNotebooks.length === 0}
                     <div class="empty">
-                        {searchKeyword ? '未找到匹配的笔记本' : '暂无笔记本'}
+                        {searchKeyword ? '未找到匹配的笔记本' : selectedNotebooks.length > 0 ? '已选择所有笔记本' : '暂无笔记本'}
                     </div>
                 {:else}
                     {#each filteredNotebooks as notebook (notebook.id)}
-                        <label class="notebook-item">
-                            <input
-                                type="checkbox"
-                                checked={filter.notebookIds.includes(notebook.id)}
-                                on:change={() => toggleNotebook(notebook.id)}
-                            />
+                        <div
+                            class="notebook-item"
+                            on:click={() => addNotebook(notebook.id)}
+                        >
                             <span class="notebook-icon">{notebook.icon || '📓'}</span>
                             <span class="notebook-name">{notebook.name}</span>
                             {#if notebook.closed}
                                 <span class="closed-badge">已关闭</span>
                             {/if}
-                        </label>
+                        </div>
                     {/each}
-                {/if}
-            </div>
-
-            <!-- 底部提示 -->
-            <div class="footer">
-                {#if filter.mode === 'include'}
-                    <span>将只显示选中笔记本中的任务</span>
-                {:else}
-                    <span>将排除选中笔记本中的任务</span>
                 {/if}
             </div>
         </div>
@@ -198,134 +160,124 @@
 
 <style>
     .notebook-filter {
-        border: 1px solid var(--b3-border-color);
-        border-radius: 6px;
-        overflow: hidden;
-        background: var(--b3-theme-surface);
+        position: relative;
+        width: 100%;
+        box-sizing: border-box;
     }
 
-    .filter-summary {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 8px 12px;
-        background: var(--b3-theme-background);
-    }
-
-    .toggle-btn {
+    /* 多选输入框 */
+    .select-input {
         display: flex;
         align-items: center;
         gap: 8px;
-        background: none;
-        border: none;
-        cursor: pointer;
-        color: var(--b3-theme-on-surface);
-        font-size: 14px;
-        padding: 4px 8px;
-        border-radius: 4px;
-        transition: background 0.2s;
-    }
-
-    .toggle-btn:hover {
-        background: var(--b3-theme-surface);
-    }
-
-    .toggle-btn.active {
-        color: var(--b3-theme-primary);
-        font-weight: 600;
-    }
-
-    .badge {
-        background: var(--b3-theme-primary-lighter);
-        color: var(--b3-theme-primary);
+        min-height: 28px;
         padding: 2px 8px;
-        border-radius: 12px;
-        font-size: 12px;
-        font-weight: 600;
-    }
-
-    .expand-btn {
-        background: none;
-        border: none;
-        cursor: pointer;
-        padding: 4px 8px;
-        color: var(--b3-theme-on-surface);
-        opacity: 0.6;
-        transition: opacity 0.2s;
-    }
-
-    .expand-btn:hover {
-        opacity: 1;
-    }
-
-    .filter-panel {
-        border-top: 1px solid var(--b3-border-color);
-        padding: 12px;
-    }
-
-    .toolbar {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 12px;
-    }
-
-    .mode-switch {
-        display: flex;
-        gap: 4px;
-        background: var(--b3-theme-background);
-        border-radius: 6px;
-        padding: 4px;
-    }
-
-    .mode-btn {
-        padding: 6px 12px;
-        border: none;
-        background: none;
-        cursor: pointer;
-        border-radius: 4px;
-        font-size: 12px;
-        color: var(--b3-theme-on-surface);
-        transition: all 0.2s;
-    }
-
-    .mode-btn.active {
-        background: var(--b3-theme-primary);
-        color: white;
-    }
-
-    .actions {
-        display: flex;
-        gap: 8px;
-    }
-
-    .action-btn {
-        padding: 6px 12px;
         border: 1px solid var(--b3-border-color);
-        background: var(--b3-theme-background);
-        cursor: pointer;
         border-radius: 4px;
+        background: var(--b3-theme-surface);
+        cursor: pointer;
+        transition: border-color 0.2s;
+        box-sizing: border-box;
+    }
+
+    .select-input:hover {
+        border-color: var(--b3-theme-primary);
+    }
+
+    .selected-tags {
+        flex: 1;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        align-items: center;
+    }
+
+    .placeholder {
+        color: var(--b3-theme-on-surface-light);
         font-size: 12px;
+    }
+
+    /* 标签样式 */
+    .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 6px;
+        background: var(--b3-theme-primary-lighter);
+        border-radius: 12px;
+        font-size: 11px;
         color: var(--b3-theme-on-surface);
+    }
+
+    .tag-icon {
+        font-size: 12px;
+    }
+
+    .tag-name {
+        max-width: 100px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .tag-remove {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 14px;
+        height: 14px;
+        padding: 0;
+        border: none;
+        background: none;
+        color: var(--b3-theme-on-surface);
+        font-size: 16px;
+        line-height: 1;
+        cursor: pointer;
+        border-radius: 50%;
         transition: all 0.2s;
     }
 
-    .action-btn:hover {
+    .tag-remove:hover {
+        background: rgba(0, 0, 0, 0.1);
+        color: var(--b3-theme-error);
+    }
+
+    .dropdown-arrow {
+        color: var(--b3-theme-on-surface-light);
+        font-size: 10px;
+        user-select: none;
+    }
+
+    /* 下拉面板 */
+    .dropdown-panel {
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        right: 0;
         background: var(--b3-theme-surface);
+        border: 1px solid var(--b3-border-color);
+        border-radius: 4px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        z-index: 1000;
+        max-height: 200px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
     }
 
     .search-box {
-        margin-bottom: 12px;
+        padding: 8px;
+        border-bottom: 1px solid var(--b3-border-color);
     }
 
     .search-box input {
         width: 100%;
-        padding: 8px 12px;
+        padding: 6px 10px;
         border: 1px solid var(--b3-border-color);
         border-radius: 4px;
         background: var(--b3-theme-background);
         color: var(--b3-theme-on-background);
-        font-size: 13px;
+        font-size: 12px;
     }
 
     .search-box input:focus {
@@ -334,19 +286,16 @@
     }
 
     .notebook-list {
-        max-height: 300px;
+        flex: 1;
         overflow-y: auto;
-        border: 1px solid var(--b3-border-color);
-        border-radius: 4px;
-        background: var(--b3-theme-background);
     }
 
     .loading,
     .empty {
-        padding: 32px;
+        padding: 24px;
         text-align: center;
         color: var(--b3-theme-on-surface-light);
-        font-size: 14px;
+        font-size: 12px;
     }
 
     .notebook-item {
@@ -364,38 +313,25 @@
     }
 
     .notebook-item:hover {
-        background: var(--b3-theme-surface);
-    }
-
-    .notebook-item input[type="checkbox"] {
-        cursor: pointer;
+        background: var(--b3-theme-background);
     }
 
     .notebook-icon {
-        font-size: 16px;
+        font-size: 14px;
+        flex-shrink: 0;
     }
 
     .notebook-name {
         flex: 1;
-        font-size: 13px;
+        font-size: 12px;
         color: var(--b3-theme-on-background);
     }
 
     .closed-badge {
-        font-size: 11px;
+        font-size: 10px;
         color: var(--b3-theme-on-surface-light);
         background: var(--b3-theme-surface);
         padding: 2px 6px;
         border-radius: 3px;
-    }
-
-    .footer {
-        margin-top: 12px;
-        padding: 8px;
-        background: var(--b3-theme-primary-lightest);
-        border-radius: 4px;
-        font-size: 12px;
-        color: var(--b3-theme-on-surface-light);
-        text-align: center;
     }
 </style>
