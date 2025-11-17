@@ -492,137 +492,173 @@
         }
     }
 
-    // 处理添加新任务
-    function handleAddTask(event: CustomEvent) {
+    // ==================== 工具函数 ====================
+
+    /**
+     * Promise 包装 fetchPost
+     */
+    function fetchPostAsync(url: string, data: any): Promise<any> {
+        return new Promise((resolve, reject) => {
+            fetchPost(url, data, (response) => {
+                if (response && response.code === 0) {
+                    resolve(response);
+                } else {
+                    reject(new Error(response?.msg || `Request failed: ${url}`));
+                }
+            });
+        });
+    }
+
+    /**
+     * 显示成功通知
+     */
+    function showSuccess(msg: string) {
+        fetchPost('/api/notification/pushMsg', { msg, timeout: 3000 });
+    }
+
+    /**
+     * 显示错误通知
+     */
+    function showError(msg: string) {
+        fetchPost('/api/notification/pushErrMsg', { msg, timeout: 5000 });
+    }
+
+    // ==================== 任务添加相关 ====================
+
+    const TODO_HEADING_TEXT = '## 待办';
+
+    /**
+     * 使用 SQL 查询在指定文档下查找带有自定义属性标记的"待办"标题
+     */
+    async function findTodoHeadingBySQL(docId: string): Promise<string | null> {
+        // 只通过属性查找，不依赖标题内容
+        const sql = `
+            SELECT id
+            FROM blocks
+            WHERE root_id = '${docId}'
+              AND type = 'h'
+              AND id IN (
+                SELECT block_id
+                FROM attributes
+                WHERE name = '${TASK_ATTRS.DAILY_TODO_HEADING}'
+                  AND value = 'true'
+              )
+            LIMIT 1
+        `;
+
+        try {
+            const result = await fetchPostAsync('/api/query/sql', { stmt: sql });
+
+            if (result.data && result.data.length > 0) {
+                return result.data[0].id;
+            }
+
+            return null;
+        } catch (err) {
+            console.error('[AddTask] Failed to query todo heading:', err);
+            return null;
+        }
+    }
+
+    /**
+     * 创建"待办"标题并设置标记属性
+     */
+    async function createTodoHeading(docId: string): Promise<string> {
+        const result = await fetchPostAsync('/api/block/prependBlock', {
+            dataType: 'markdown',
+            data: TODO_HEADING_TEXT,
+            parentID: docId
+        });
+
+        const headingId = result.data?.[0]?.doOperations?.[0]?.id;
+        if (!headingId) {
+            throw new Error('Failed to get heading ID from response');
+        }
+
+        // 设置标记属性用于后续识别
+        await fetchPostAsync('/api/attr/setBlockAttrs', {
+            id: headingId,
+            attrs: { [TASK_ATTRS.DAILY_TODO_HEADING]: 'true' }
+        });
+
+        return headingId;
+    }
+
+    /**
+     * 添加任务到指定标题下
+     */
+    async function addTaskToHeading(
+        headingId: string,
+        content: string,
+        priority: string,
+        dueDate: Date
+    ): Promise<string> {
+        // 添加任务块
+        const result = await fetchPostAsync('/api/block/appendBlock', {
+            dataType: 'markdown',
+            data: `- [ ] ${content}`,
+            parentID: headingId
+        });
+
+        const taskId = result.data?.[0]?.doOperations?.[0]?.id;
+        if (!taskId) {
+            throw new Error('Failed to get task ID from response');
+        }
+
+        // 设置任务属性（优先级、截止日期）
+        const attrs: Record<string, string> = {};
+        if (priority) attrs[TASK_ATTRS.PRIORITY] = priority;
+        if (dueDate) attrs[TASK_ATTRS.DUE_DATE] = dueDate.toISOString();
+
+        if (Object.keys(attrs).length > 0) {
+            await fetchPostAsync('/api/attr/setBlockAttrs', {
+                id: taskId,
+                attrs: attrs
+            });
+        }
+
+        return taskId;
+    }
+
+    /**
+     * 处理添加新任务
+     */
+    async function handleAddTask(event: CustomEvent) {
         const { content, priority, dueDate } = event.detail;
 
-        // 1. 检查是否已设置日记笔记本
+        // 检查是否已设置日记笔记本
         if (!taskSettings.dailyNoteNotebookId) {
-            alert('请先设置日记笔记本');
+            showError('请先设置日记笔记本');
             showSettingsDialog = true;
             return;
         }
 
-        const notebookId = taskSettings.dailyNoteNotebookId;
-
-        // 2. 创建或获取今日日记
-        fetchPost('/api/filetree/createDailyNote', {
-            notebook: notebookId
-        }, (dailyNote) => {
-            if (!dailyNote || dailyNote.code !== 0) {
-                alert('创建日记失败');
-                return;
-            }
-
+        try {
+            // 1. 创建或获取今日日记
+            const dailyNote = await fetchPostAsync('/api/filetree/createDailyNote', {
+                notebook: taskSettings.dailyNoteNotebookId
+            });
             const docId = dailyNote.data.id;
 
-            // 3. 查找或创建"待办"二级标题
-            fetchPost('/api/block/getChildBlocks', {
-                id: docId
-            }, (childBlocks) => {
-                let todoHeadingId = null;
+            // 2. 查找带标记属性的"待办"标题
+            let todoHeadingId = await findTodoHeadingBySQL(docId);
 
-                if (childBlocks && childBlocks.code === 0 && childBlocks.data) {
-                    // 查找是否已存在"待办"标题（通过自定义属性）
-                    for (const block of childBlocks.data) {
-                        if (block.type === 'h' && block.ial && block.ial.includes(`${TASK_ATTRS.DAILY_TODO_HEADING}="true"`)) {
-                            todoHeadingId = block.id;
-                            break;
-                        }
-                    }
-                }
+            // 3. 如果不存在，创建新标题
+            if (!todoHeadingId) {
+                todoHeadingId = await createTodoHeading(docId);
+            }
 
-                // 添加任务的函数
-                const addTaskToHeading = (headingId: string) => {
-                    // 构建任务 markdown
-                    let taskMarkdown = `- [ ] ${content}`;
+            // 4. 添加任务
+            await addTaskToHeading(todoHeadingId, content, priority, dueDate);
 
-                    // 准备任务属性
-                    const attrs: Record<string, string> = {};
-                    if (priority) {
-                        attrs[TASK_ATTRS.PRIORITY] = priority;
-                    }
-                    if (dueDate) {
-                        attrs[TASK_ATTRS.DUE_DATE] = dueDate.toISOString();
-                    }
+            // 5. 刷新并通知
+            loadTasks();
+            showSuccess('✅ 任务已添加到今日日记');
 
-                    // 在"待办"标题下添加任务
-                    fetchPost('/api/block/appendBlock', {
-                        dataType: 'markdown',
-                        data: taskMarkdown,
-                        parentID: headingId
-                    }, (insertResult) => {
-                        if (insertResult && insertResult.code === 0 && insertResult.data) {
-                            const taskId = insertResult.data[0]?.doOperations?.[0]?.id;
-
-                            // 设置属性
-                            if (taskId && Object.keys(attrs).length > 0) {
-                                fetchPost('/api/attr/setBlockAttrs', {
-                                    id: taskId,
-                                    attrs: attrs
-                                }, (attrResult) => {
-                                    if (attrResult && attrResult.code === 0) {
-                                        loadTasks();
-                                        fetchPost('/api/notification/pushMsg', {
-                                            msg: '✅ 任务已添加到今日日记',
-                                            timeout: 3000
-                                        });
-                                    } else {
-                                        fetchPost('/api/notification/pushErrMsg', {
-                                            msg: '❌ 设置任务属性失败',
-                                            timeout: 5000
-                                        });
-                                    }
-                                });
-                            } else {
-                                loadTasks();
-                                fetchPost('/api/notification/pushMsg', {
-                                    msg: '✅ 任务已添加到今日日记',
-                                    timeout: 3000
-                                });
-                            }
-                        } else {
-                            fetchPost('/api/notification/pushErrMsg', {
-                                msg: '❌ 插入任务失败',
-                                timeout: 5000
-                            });
-                        }
-                    });
-                };
-
-                // 如果没有找到"待办"标题，创建一个
-                if (!todoHeadingId) {
-                    fetchPost('/api/block/prependBlock', {
-                        dataType: 'markdown',
-                        data: '## 待办',
-                        parentID: docId
-                    }, (headingResult) => {
-                        if (headingResult && headingResult.code === 0 && headingResult.data) {
-                            const newHeadingId = headingResult.data[0]?.doOperations?.[0]?.id;
-
-                            if (newHeadingId) {
-                                // 给新创建的标题设置自定义属性
-                                fetchPost('/api/attr/setBlockAttrs', {
-                                    id: newHeadingId,
-                                    attrs: {
-                                        [TASK_ATTRS.DAILY_TODO_HEADING]: 'true'
-                                    }
-                                }, () => {
-                                    addTaskToHeading(newHeadingId);
-                                });
-                            }
-                        } else {
-                            fetchPost('/api/notification/pushErrMsg', {
-                                msg: '❌ 创建"待办"标题失败',
-                                timeout: 5000
-                            });
-                        }
-                    });
-                } else {
-                    addTaskToHeading(todoHeadingId);
-                }
-            });
-        });
+        } catch (err) {
+            console.error('[AddTask] Failed to add task:', err);
+            showError(`❌ 添加任务失败: ${err.message || '未知错误'}`);
+        }
     }
 
     // 打开添加任务对话框

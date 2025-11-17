@@ -12,6 +12,7 @@
     let taskContent = '';
     let priority: TaskPriority | '' = '';
     let dueDate = '';
+    let submitting = false;
 
     // 优先级选项
     const priorityOptions = [
@@ -23,9 +24,11 @@
     ];
 
     function handleSubmit() {
-        if (!taskContent.trim()) {
+        if (!taskContent.trim() || submitting) {
             return;
         }
+
+        submitting = true;
 
         const task = {
             content: taskContent.trim(),
@@ -34,7 +37,12 @@
         };
 
         dispatch('submit', task);
-        handleClose();
+
+        // 延迟关闭以等待任务完成
+        setTimeout(() => {
+            submitting = false;
+            handleClose();
+        }, 100);
     }
 
     function handleClose() {
@@ -105,9 +113,14 @@
                 type="button"
                 class="btn btn-primary"
                 on:click={handleSubmit}
-                disabled={!taskContent.trim()}
+                disabled={!taskContent.trim() || submitting}
             >
-                添加 (Ctrl+Enter)
+                {#if submitting}
+                    <span class="spinner-small"></span>
+                    添加中...
+                {:else}
+                    添加 (Ctrl+Enter)
+                {/if}
             </button>
         </div>
     </div>
@@ -184,6 +197,7 @@
     .dialog-body {
         padding: 20px;
         overflow-y: auto;
+        overflow-x: hidden;
     }
 
     .form-group {
@@ -214,6 +228,7 @@
         font-size: 14px;
         font-family: inherit;
         transition: all 0.2s;
+        box-sizing: border-box;
     }
 
     .form-group textarea {
@@ -286,5 +301,21 @@
     .btn-primary:hover:not(:disabled) {
         opacity: 0.9;
         transform: translateY(-1px);
+    }
+
+    .spinner-small {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        border-top-color: white;
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+        margin-right: 6px;
+        vertical-align: -1px;
+    }
+
+    @keyframes spin {
+        to { transform: rotate(360deg); }
     }
 </style>

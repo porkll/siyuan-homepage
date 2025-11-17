@@ -498,7 +498,12 @@ export async function createDailyNote(notebook: NotebookId): Promise<{ id: Docum
  * @returns 文档信息
  */
 export async function getDocInfo(id: DocumentId): Promise<any> {
-    // 使用 SQL 查询获取文档信息
+    // 使用参数化查询防止 SQL 注入
+    // 注意：思源 API 不支持真正的参数化查询，但我们对 ID 进行严格验证
+    // ID 应该是 14 位的雪花 ID，只包含数字
+    if (!/^\d{14,20}$/.test(id)) {
+        throw new Error('Invalid document ID format');
+    }
     let sqlScript = `SELECT * FROM blocks WHERE id = '${id}' AND type = 'd'`;
     let data = await sql(sqlScript);
     return data[0];
