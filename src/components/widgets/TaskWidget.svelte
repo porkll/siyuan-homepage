@@ -5,6 +5,7 @@
 <script lang="ts">
     import { onMount } from 'svelte';
     import { fetchPost, openTab } from 'siyuan';
+    import { ListTodo, RefreshCw, Eye, EyeOff, LayoutGrid } from 'lucide-svelte';
     import type {
         Task,
         TaskViewType,
@@ -40,7 +41,7 @@
             title: '待办',
             status: 'todo' as TaskStatus,
             color: '#94a3b8',
-            icon: '📋',
+            icon: '',
             order: 1
         },
         {
@@ -48,7 +49,7 @@
             title: '进行中',
             status: 'in-progress' as TaskStatus,
             color: '#3b82f6',
-            icon: '🚀',
+            icon: '',
             order: 2
         },
         {
@@ -56,7 +57,7 @@
             title: '审核中',
             status: 'review' as TaskStatus,
             color: '#f59e0b',
-            icon: '👀',
+            icon: '',
             order: 3
         },
         {
@@ -64,7 +65,7 @@
             title: '已完成',
             status: 'done' as TaskStatus,
             color: '#10b981',
-            icon: '✅',
+            icon: '',
             order: 4
         }
     ];
@@ -360,13 +361,111 @@
         updateFilteredTasks();
         saveConfig();
     }
+
+    // 处理任务截止日期变化
+    function handleTaskDueDateChange(event: CustomEvent) {
+        const { task, dueDate } = event.detail;
+
+        try {
+            const attrs: Record<string, string> = {};
+            if (dueDate) {
+                // 将日期转换为 ISO 字符串
+                attrs[TASK_ATTRS.DUE_DATE] = dueDate.toISOString();
+            } else {
+                // 清除截止日期
+                attrs[TASK_ATTRS.DUE_DATE] = '';
+            }
+
+            fetchPost('/api/attr/setBlockAttrs', {
+                id: task.id,
+                attrs: attrs
+            }, (response) => {
+                if (response && response.code === 0) {
+                    loadTasks();
+                } else {
+                    console.error('Failed to set due date:', response);
+                }
+            });
+        } catch (err) {
+            console.error('Failed to set due date:', err);
+        }
+    }
+
+    // 处理任务优先级变化
+    function handleTaskPriorityChange(event: CustomEvent) {
+        const { task, priority } = event.detail;
+
+        try {
+            const attrs: Record<string, string> = {};
+            if (priority) {
+                attrs[TASK_ATTRS.PRIORITY] = priority;
+            } else {
+                // 清除优先级
+                attrs[TASK_ATTRS.PRIORITY] = '';
+            }
+
+            fetchPost('/api/attr/setBlockAttrs', {
+                id: task.id,
+                attrs: attrs
+            }, (response) => {
+                if (response && response.code === 0) {
+                    loadTasks();
+                } else {
+                    console.error('Failed to set priority:', response);
+                }
+            });
+        } catch (err) {
+            console.error('Failed to set priority:', err);
+        }
+    }
+
+    // 处理任务归档
+    function handleTaskArchive(event: CustomEvent) {
+        const { task } = event.detail;
+
+        try {
+            // 归档任务：设置状态为 archived 并标记为已完成
+            const attrs: Record<string, string> = {
+                [TASK_ATTRS.STATUS]: 'archived'
+            };
+
+            // 先更新属性
+            fetchPost('/api/attr/setBlockAttrs', {
+                id: task.id,
+                attrs: attrs
+            }, (attrResponse) => {
+                if (attrResponse && attrResponse.code === 0) {
+                    // 然后更新 markdown 为已完成状态
+                    const newMarkdown = task.markdown.replace(/^([*-]\s*)\[.\]/, '$1[x]');
+                    fetchPost('/api/block/updateBlock', {
+                        id: task.id,
+                        dataType: 'markdown',
+                        data: newMarkdown
+                    }, (updateResponse) => {
+                        if (updateResponse && updateResponse.code === 0) {
+                            loadTasks();
+                        } else {
+                            console.error('Failed to update block:', updateResponse);
+                        }
+                    });
+                } else {
+                    console.error('Failed to set attrs:', attrResponse);
+                }
+            });
+        } catch (err) {
+            console.error('Failed to archive task:', err);
+        }
+    }
 </script>
 
 <div class="task-widget">
     <!-- 头部 -->
     <div class="widget-header">
         <div class="title-section">
-            <h3 class="widget-title">📝 任务</h3>
+            <h3 class="widget-title">
+                <ListTodo size={16} style="vertical-align: -2px;" />
+                任务
+            </h3>
             {#if config.preferences?.showStats}
                 <div class="stats-badges">
                     <span class="badge total">{stats.total}</span>
@@ -385,13 +484,13 @@
                     on:click={() => switchView('kanban')}
                     title="看板视图"
                 >
-                    📊
+                    <LayoutGrid size={14} />
                 </button>
             </div>
 
             <!-- 操作按钮 -->
             <button class="icon-btn" on:click={loadTasks} title="刷新">
-                🔄
+                <RefreshCw size={14} />
             </button>
             <button
                 class="icon-btn"
@@ -399,7 +498,11 @@
                 on:click={toggleShowCompleted}
                 title={config.filter.showCompleted ? '隐藏已完成' : '显示已完成'}
             >
-                {config.filter.showCompleted ? '👁️' : '🙈'}
+                {#if config.filter.showCompleted}
+                    <Eye size={14} />
+                {:else}
+                    <EyeOff size={14} />
+                {/if}
             </button>
         </div>
     </div>
@@ -420,7 +523,7 @@
                 class:active={config.filter.quickFilter === 'today'}
                 on:click={() => setQuickFilter('today')}
             >
-                📅 今日
+                今日
             </button>
         </div>
 
@@ -485,6 +588,9 @@
                     on:taskClick={handleTaskClick}
                     on:taskMove={handleTaskMove}
                     on:columnCollapse={handleColumnCollapse}
+                    on:dueDateChange={handleTaskDueDateChange}
+                    on:priorityChange={handleTaskPriorityChange}
+                    on:archive={handleTaskArchive}
                 />
             {/if}
 

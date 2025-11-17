@@ -1,0 +1,274 @@
+<!--
+  任务卡片组件
+  可拖拽的任务卡片，包含任务信息和操作按钮
+-->
+<script lang="ts">
+    import { createEventDispatcher } from 'svelte';
+    import type { Task } from '../../../types/task';
+    import TaskCardActions from './TaskCardActions.svelte';
+    import { Calendar, FileText } from 'lucide-svelte';
+
+    export let task: Task;
+    export let columnId: string;
+
+    const dispatch = createEventDispatcher<{
+        taskClick: Task;
+        dragStart: { task: Task; columnId: string };
+        dueDateChange: { task: Task; dueDate: Date | null };
+        priorityChange: { task: Task; priority: string | null };
+        archive: { task: Task };
+    }>();
+
+    let dropdownOpen = false;
+
+    // 优先级颜色映射
+    const priorityColors = {
+        urgent: '#ef4444',
+        high: '#f97316',
+        medium: '#eab308',
+        low: '#6b7280'
+    };
+
+    // 格式化日期
+    function formatDate(date: Date): string {
+        const now = new Date();
+        const diffDays = Math.floor((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+        if (diffDays === 0) return '今天';
+        if (diffDays === 1) return '明天';
+        if (diffDays === -1) return '昨天';
+        if (diffDays < 0) return `逾期 ${-diffDays} 天`;
+        if (diffDays < 7) return `${diffDays} 天后`;
+
+        return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+    }
+
+    // 检查是否逾期
+    function isOverdue(task: Task): boolean {
+        return !task.completed && task.dueDate ? task.dueDate < new Date() : false;
+    }
+
+    // 截断文本
+    function truncateText(text: string, maxLength: number = 100): string {
+        if (text.length <= maxLength) return text;
+        return text.substring(0, maxLength) + '...';
+    }
+
+    function handleTaskClick() {
+        dispatch('taskClick', task);
+    }
+
+    function handleDragStart() {
+        dispatch('dragStart', { task, columnId });
+    }
+
+    function handleDueDateChange(event: CustomEvent) {
+        dispatch('dueDateChange', { task, dueDate: event.detail });
+    }
+
+    function handlePriorityChange(event: CustomEvent) {
+        dispatch('priorityChange', { task, priority: event.detail });
+    }
+
+    function handleArchive(event: CustomEvent) {
+        dispatch('archive', { task });
+    }
+</script>
+
+<div
+    class="task-card"
+    class:overdue={isOverdue(task)}
+    class:dropdown-open={dropdownOpen}
+    draggable="true"
+    on:dragstart={handleDragStart}
+    on:click={handleTaskClick}
+>
+    <!-- 优先级标记 -->
+    {#if task.priority}
+        <div
+            class="priority-indicator"
+            style:background-color={priorityColors[task.priority]}
+        />
+    {/if}
+
+    <!-- 任务内容 -->
+    <div class="task-content" title={task.content}>
+        {truncateText(task.content)}
+    </div>
+
+    <!-- 任务元信息 -->
+    <div class="task-meta">
+        <!-- 截止日期 -->
+        {#if task.dueDate}
+            <span
+                class="due-date"
+                class:overdue={isOverdue(task)}
+            >
+                <Calendar size={12} />
+                {formatDate(task.dueDate)}
+            </span>
+        {/if}
+
+        <!-- 标签 -->
+        {#if task.tags && task.tags.length > 0}
+            <div class="tags">
+                {#each task.tags.slice(0, 3) as tag}
+                    <span class="tag">{tag}</span>
+                {/each}
+            </div>
+        {/if}
+    </div>
+
+    <!-- 进度条 -->
+    {#if task.progress !== undefined && task.progress > 0}
+        <div class="progress-bar">
+            <div
+                class="progress-fill"
+                style:width="{task.progress}%"
+            />
+        </div>
+    {/if}
+
+    <!-- 文档信息和操作按钮（同一行） -->
+    <div class="task-footer">
+        <span class="doc-name" title={task.docPath}>
+            <FileText size={11} />
+            {task.docName}
+        </span>
+
+        <!-- 操作按钮 -->
+        <TaskCardActions
+            {task}
+            bind:dropdownOpen
+            on:dueDateChange={handleDueDateChange}
+            on:priorityChange={handlePriorityChange}
+            on:archive={handleArchive}
+        />
+    </div>
+</div>
+
+<style>
+    .task-card {
+        background: var(--b3-theme-background);
+        border: 1px solid var(--b3-border-color);
+        border-radius: 6px;
+        padding: 8px 12px 12px 12px;
+        cursor: pointer;
+        transition: all 0.2s;
+        position: relative;
+    }
+
+    .task-card:hover {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        transform: translateY(-2px);
+    }
+
+    .task-card.overdue {
+        border-left: 3px solid #ef4444;
+    }
+
+    .task-card.dropdown-open {
+        z-index: 1000;
+    }
+
+    .priority-indicator {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+    }
+
+    .task-content {
+        margin: 0 0 8px 0;
+        color: var(--b3-theme-on-background);
+        font-size: 14px;
+        line-height: 1.4;
+        word-break: break-word;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        max-height: 4.2em;
+    }
+
+    .task-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 6px;
+        align-items: center;
+    }
+
+    .due-date {
+        font-size: 12px;
+        color: var(--b3-theme-on-surface-light);
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .due-date.overdue {
+        color: #ef4444;
+        font-weight: 600;
+    }
+
+    .tags {
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
+    }
+
+    .tag {
+        background: var(--b3-theme-primary-lightest);
+        color: var(--b3-theme-primary);
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+    }
+
+    .progress-bar {
+        height: 4px;
+        background: var(--b3-theme-surface);
+        border-radius: 2px;
+        overflow: hidden;
+        margin-top: 8px;
+    }
+
+    .progress-fill {
+        height: 100%;
+        background: var(--b3-theme-primary);
+        transition: width 0.3s;
+    }
+
+    .task-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        border-top: 1px solid var(--b3-border-color);
+        padding-top: 6px;
+        margin-top: 6px;
+    }
+
+    .doc-name {
+        font-size: 11px;
+        color: var(--b3-theme-on-surface-light);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex: 1;
+        min-width: 0;
+    }
+
+    /* 默认隐藏操作按钮 */
+    .task-card :global(.task-actions) {
+        opacity: 0;
+        transition: opacity 0.2s;
+    }
+
+    /* 悬浮时显示操作按钮 */
+    .task-card:hover :global(.task-actions) {
+        opacity: 1;
+    }
+</style>
