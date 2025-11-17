@@ -33,17 +33,20 @@ import { IMenuItem } from "siyuan/types";
 
 import HelloExample from "@/hello.svelte";
 import SettingExample from "@/setting-example.svelte";
+import Homepage from "@/homepage.svelte";
 
 import { SettingUtils } from "./libs/setting-utils";
 import { svelteDialog } from "./libs/dialog";
 
 const STORAGE_NAME = "menu-config";
 const TAB_TYPE = "custom_tab";
+const HOMEPAGE_TAB_TYPE = "homepage_tab";
 const DOCK_TYPE = "dock_tab";
 
 export default class PluginSample extends Plugin {
 
     private custom: () => Custom;
+    private homepageTab: () => Custom;
     private isMobile: boolean;
     private blockIconEventBindThis = this.blockIconEvent.bind(this);
     private settingUtils: SettingUtils;
@@ -77,6 +80,9 @@ export default class PluginSample extends Plugin {
 </symbol>
 <symbol id="iconSaving" viewBox="0 0 32 32">
 <path d="M20 13.333c0-0.733 0.6-1.333 1.333-1.333s1.333 0.6 1.333 1.333c0 0.733-0.6 1.333-1.333 1.333s-1.333-0.6-1.333-1.333zM10.667 12h6.667v-2.667h-6.667v2.667zM29.333 10v9.293l-3.76 1.253-2.24 7.453h-7.333v-2.667h-2.667v2.667h-7.333c0 0-3.333-11.28-3.333-15.333s3.28-7.333 7.333-7.333h6.667c1.213-1.613 3.147-2.667 5.333-2.667 1.107 0 2 0.893 2 2 0 0.28-0.053 0.533-0.16 0.773-0.187 0.453-0.347 0.973-0.427 1.533l3.027 3.027h2.893zM26.667 12.667h-1.333l-4.667-4.667c0-0.867 0.12-1.72 0.347-2.547-1.293 0.333-2.347 1.293-2.787 2.547h-8.227c-2.573 0-4.667 2.093-4.667 4.667 0 2.507 1.627 8.867 2.68 12.667h2.653v-2.667h8v2.667h2.68l2.067-6.867 3.253-1.093v-4.707z"></path>
+</symbol>
+<symbol id="iconHome" viewBox="0 0 32 32">
+<path d="M16 2.667l-13.333 10.667v16h10.667v-10.667h5.333v10.667h10.667v-16l-13.333-10.667zM26.667 26.667h-5.333v-10.667h-10.667v10.667h-5.333v-13.333l10.667-8.533 10.667 8.533v13.333z"></path>
 </symbol>`);
 
         let tabDiv = document.createElement("div");
@@ -100,6 +106,33 @@ export default class PluginSample extends Plugin {
             destroy() {
                 app?.$destroy();
                 console.log("destroy tab:", TAB_TYPE);
+            }
+        });
+
+        // Register homepage tab
+        let homepageDiv = document.createElement("div");
+        let homepageApp = null;
+        const pluginI18n = this.i18n; // Capture i18n in closure
+        const pluginInstance = this; // Capture plugin instance
+        this.homepageTab = this.addTab({
+            type: HOMEPAGE_TAB_TYPE,
+            init() {
+                homepageApp = new Homepage({
+                    target: homepageDiv,
+                    props: {
+                        app: this.app,
+                        i18n: pluginI18n,
+                        plugin: pluginInstance
+                    }
+                });
+                this.element.appendChild(homepageDiv);
+            },
+            beforeDestroy() {
+                console.log("before destroy tab:", HOMEPAGE_TAB_TYPE);
+            },
+            destroy() {
+                homepageApp?.$destroy();
+                console.log("destroy tab:", HOMEPAGE_TAB_TYPE);
             }
         });
 
@@ -339,6 +372,16 @@ export default class PluginSample extends Plugin {
     }
 
     onLayoutReady() {
+        // Add home icon to topbar
+        this.addTopBar({
+            icon: "iconHome",
+            title: this.i18n.homeIconTitle,
+            position: "left",
+            callback: () => {
+                this.showHomepage();
+            }
+        });
+
         const topBarElement = this.addTopBar({
             icon: "iconFace",
             title: this.i18n.addTopBarIcon,
@@ -464,6 +507,19 @@ export default class PluginSample extends Plugin {
                 detail.protyle.getInstance().transaction(doOperations);
             }
         });
+    }
+
+    private showHomepage() {
+        const tab = openTab({
+            app: this.app,
+            custom: {
+                icon: "iconHome",
+                title: this.i18n.homepageTitle || "Homepage",
+                data: {},
+                id: this.name + HOMEPAGE_TAB_TYPE
+            },
+        });
+        console.log("Opened homepage tab:", tab);
     }
 
     private showDialog() {

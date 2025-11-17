@@ -1,5 +1,12 @@
 {
     "addTopBarIcon": "使用插件添加一个顶栏按钮",
+    "homeIconTitle": "打开主页",
+    "homepageTitle": "思源主页",
+    "currentTime": "当前时间",
+    "notebookList": "笔记本列表",
+    "noNotebooks": "未找到笔记本",
+    "quickInfo": "快速信息",
+    "appId": "应用 ID",
     "cancel": "取消",
     "save": "保存",
     "byeMenu": "再见，菜单！",

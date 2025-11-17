@@ -1,5 +1,12 @@
 {
     "addTopBarIcon": "Add a top bar icon by plugin",
+    "homeIconTitle": "Open Homepage",
+    "homepageTitle": "SiYuan Homepage",
+    "currentTime": "Current Time",
+    "notebookList": "Notebooks",
+    "noNotebooks": "No notebooks found",
+    "quickInfo": "Quick Info",
+    "appId": "App ID",
     "cancel": "Cancel",
     "save": "Save",
     "byeMenu": "Bye, Menu!",

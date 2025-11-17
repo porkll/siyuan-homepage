@@ -1,10 +1,10 @@
 {
-  "name": "plugin-sample-vite-svelte",
-  "author": "frostime",
-  "url": "https://github.com/siyuan-note/plugin-sample-vite-svelte",
-  "version": "0.4.1",
+  "name": "siyuan-homepage",
+  "author": "lei",
+  "url": "https://github.com/lei/siyuan-homepage",
+  "version": "0.1.0",
   "minAppVersion": "3.2.1",
-  "disabledInPublish": true,
+  "disabledInPublish": false,
   "backends": [
     "windows",
     "linux",
@@ -22,12 +22,12 @@
     "desktop-window"
   ],
   "displayName": {
-    "default": "Plugin sample with vite and svelte",
-    "zh_CN": "插件样例 vite + svelte 版"
+    "default": "SiYuan Homepage",
+    "zh_CN": "思源主页"
   },
   "description": {
-    "default": "SiYuan plugin sample with vite and svelte",
-    "zh_CN": "使用 vite 和 svelte 开发的思源插件样例"
+    "default": "A homepage plugin for SiYuan with quick access to notebooks and system information",
+    "zh_CN": "思源笔记的主页插件，快速访问笔记本和系统信息"
   },
   "readme": {
     "default": "README.md",
@@ -37,12 +37,12 @@
     "openCollective": "",
     "patreon": "",
     "github": "",
-    "custom": [
-      "https://ld246.com/sponsor"
-    ]
+    "custom": []
   },
   "keywords": [
-    "sample",
-    "示例"
+    "homepage",
+    "dashboard",
+    "主页",
+    "仪表盘"
   ]
 }
