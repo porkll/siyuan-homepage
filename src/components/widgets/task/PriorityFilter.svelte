@@ -22,6 +22,7 @@
 
     let showDropdown = false;
     let containerRef: HTMLDivElement;
+    let dropdownStyle = { top: '0px', left: '0px', width: '0px' };
 
     // 点击外部关闭下拉框
     function handleClickOutside(event: MouseEvent) {
@@ -60,6 +61,17 @@
 
     function toggleDropdown() {
         showDropdown = !showDropdown;
+        if (showDropdown) {
+            // 计算下拉框位置
+            if (containerRef) {
+                const rect = containerRef.getBoundingClientRect();
+                dropdownStyle = {
+                    top: `${rect.bottom + 4}px`,
+                    left: `${rect.left}px`,
+                    width: `${rect.width}px`
+                };
+            }
+        }
     }
 </script>
 
@@ -90,7 +102,7 @@
 
     <!-- 下拉列表 -->
     {#if showDropdown}
-        <div class="dropdown-panel">
+        <div class="dropdown-panel" style="top: {dropdownStyle.top}; left: {dropdownStyle.left}; width: {dropdownStyle.width};">
             <div class="priority-list">
                 {#if availablePriorities.length === 0}
                     <div class="empty">已选择所有优先级</div>
@@ -199,10 +211,7 @@
 
     /* 下拉面板 */
     .dropdown-panel {
-        position: absolute;
-        top: calc(100% + 4px);
-        left: 0;
-        right: 0;
+        position: fixed;
         background: var(--b3-theme-surface);
         border: 1px solid var(--b3-border-color);
         border-radius: 4px;

@@ -22,6 +22,7 @@
     let showDropdown = false;
     let searchKeyword = '';
     let containerRef: HTMLDivElement;
+    let dropdownStyle = { top: '0px', left: '0px', width: '0px' };
 
     // 加载笔记本列表
     onMount(() => {
@@ -89,6 +90,15 @@
         showDropdown = !showDropdown;
         if (showDropdown) {
             searchKeyword = '';
+            // 计算下拉框位置
+            if (containerRef) {
+                const rect = containerRef.getBoundingClientRect();
+                dropdownStyle = {
+                    top: `${rect.bottom + 4}px`,
+                    left: `${rect.left}px`,
+                    width: `${rect.width}px`
+                };
+            }
         }
     }
 </script>
@@ -118,9 +128,9 @@
         <span class="dropdown-arrow">{showDropdown ? '▲' : '▼'}</span>
     </div>
 
-    <!-- 下拉列表 -->
+    <!-- 下拉列表（使用 Portal 渲染到 body） -->
     {#if showDropdown}
-        <div class="dropdown-panel">
+        <div class="dropdown-panel" style="top: {dropdownStyle.top}; left: {dropdownStyle.left}; width: {dropdownStyle.width};">
             <!-- 搜索框 -->
             <div class="search-box">
                 <input
@@ -250,10 +260,7 @@
 
     /* 下拉面板 */
     .dropdown-panel {
-        position: absolute;
-        top: calc(100% + 4px);
-        left: 0;
-        right: 0;
+        position: fixed;
         background: var(--b3-theme-surface);
         border: 1px solid var(--b3-border-color);
         border-radius: 4px;
