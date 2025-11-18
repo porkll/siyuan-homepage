@@ -97,8 +97,9 @@
                         <div class="widget-controls">
                             <div class="grid-inputs">
                                 <div class="input-group">
-                                    <label>列:</label>
+                                    <label for="widget-{widget.id}-colSpan">列:</label>
                                     <input
+                                        id="widget-{widget.id}-colSpan"
                                         type="number"
                                         min="1"
                                         max="12"
@@ -108,8 +109,9 @@
                                     />
                                 </div>
                                 <div class="input-group">
-                                    <label>行:</label>
+                                    <label for="widget-{widget.id}-rowSpan">行:</label>
                                     <input
+                                        id="widget-{widget.id}-rowSpan"
                                         type="number"
                                         min="1"
                                         max={maxRows}

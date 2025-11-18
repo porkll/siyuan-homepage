@@ -6,7 +6,6 @@
     import { fetchPost } from "siyuan";
 
     export let colSpan: number = 6;
-    export let rowSpan: number = 2;
 
     let stats = {
         notebooks: 0,

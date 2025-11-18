@@ -7,8 +7,6 @@
 
     const dispatch = createEventDispatcher();
 
-    export let notebookId: string = '';  // 默认笔记本ID
-
     let taskContent = '';
     let priority: TaskPriority | '' = '';
     let dueDate = '';

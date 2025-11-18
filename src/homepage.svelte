@@ -11,7 +11,6 @@
     import WidgetConfigPanel from "./components/WidgetConfigPanel.svelte";
 
     export let app; // Used for future features
-    export let i18n;
     export let plugin; // 插件实例，用于保存配置
 
     const STORAGE_KEY = 'homepage-widgets-config';

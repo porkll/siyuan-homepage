@@ -34,8 +34,6 @@
 
     export let app; // App 实例，用于打开文档
     export let plugin; // 插件实例，用于保存配置
-    export let colSpan: number = 12; // 占据的列数
-    export let rowSpan: number = 4; // 占据的行数
 
     const STORAGE_KEY = 'task-widget-config';
 
