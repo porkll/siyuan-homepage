@@ -167,6 +167,8 @@ export interface DateFilters {
     created?: DateRangeFilter;
     // 截止日期筛选
     dueDate?: DateRangeFilter;
+    // 完成日期筛选
+    completedDate?: DateRangeFilter;
 }
 
 /**

@@ -298,7 +298,7 @@
                         colSpan={widget.colSpan}
                         rowSpan={widget.rowSpan}
                         config={widget.config}
-                        onConfigChange={(newConfig: any) => {
+                        onConfigChange={(newConfig) => {
                             widget.config = newConfig;
                             widgets = [...widgets];
                             saveConfig();

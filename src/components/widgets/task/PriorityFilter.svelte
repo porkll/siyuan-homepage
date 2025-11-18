@@ -93,7 +93,7 @@
     <div class="select-input" on:click={toggleDropdown}>
         <div class="selected-tags">
             {#if selectedPrioritiesData.length === 0}
-                <span class="placeholder">选择优先级...</span>
+                <span class="placeholder">优先级...</span>
             {:else}
                 {#each selectedPrioritiesData as priority (priority.value)}
                     <span class="tag" style="background-color: {priority.color}20; border-color: {priority.color};">
@@ -118,7 +118,7 @@
         <div class="dropdown-panel" style="top: {dropdownStyle.top}; left: {dropdownStyle.left}; width: {dropdownStyle.width};">
             <div class="priority-list">
                 {#if availablePriorities.length === 0}
-                    <div class="empty">已选择所有优先级</div>
+                    <div class="empty">所有优先级已添加</div>
                 {:else}
                     {#each availablePriorities as priority (priority.value)}
                         <div

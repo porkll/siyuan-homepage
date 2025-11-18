@@ -1,6 +1,7 @@
 <!--
   任务管理 Widget
   支持看板视图、列表视图、日历视图等多种视图模式
+  包含完成日期筛选功能
 -->
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte';
@@ -167,6 +168,14 @@
                     }
                     if (config.filter.dateFilters.dueDate.end) {
                         config.filter.dateFilters.dueDate.end = new Date(config.filter.dateFilters.dueDate.end);
+                    }
+                }
+                if (config.filter.dateFilters?.completedDate) {
+                    if (config.filter.dateFilters.completedDate.start) {
+                        config.filter.dateFilters.completedDate.start = new Date(config.filter.dateFilters.completedDate.start);
+                    }
+                    if (config.filter.dateFilters.completedDate.end) {
+                        config.filter.dateFilters.completedDate.end = new Date(config.filter.dateFilters.completedDate.end);
                     }
                 }
             }
@@ -421,6 +430,16 @@
             config.filter.dateFilters = {};
         }
         config.filter.dateFilters.dueDate = event.detail;
+        updateFilteredTasks();
+        saveConfig();
+    }
+
+    // 处理完成日期筛选变化
+    function handleCompletedDateChange(event: CustomEvent) {
+        if (!config.filter.dateFilters) {
+            config.filter.dateFilters = {};
+        }
+        config.filter.dateFilters.completedDate = event.detail;
         updateFilteredTasks();
         saveConfig();
     }
@@ -833,6 +852,15 @@
             />
         </div>
 
+        <!-- 完成日期筛选 -->
+        <div class="date-filter-wrapper">
+            <DateRangeSelector
+                placeholder="完成日期"
+                filter={config.filter.dateFilters?.completedDate || { enabled: false }}
+                on:change={handleCompletedDateChange}
+            />
+        </div>
+
         <!-- 优先级筛选 -->
         <div class="priority-filter-wrapper">
             <PriorityFilter
@@ -1098,21 +1126,21 @@
     }
 
     .notebook-filter-wrapper {
-        min-width: 160px;
-        flex: 1 1 220px;
-        max-width: 300px;
+        flex: 0 1 auto;
+        width: auto;
+        min-width: 0;
     }
 
     .date-filter-wrapper {
-        min-width: 140px;
-        flex: 1 1 160px;
-        max-width: 200px;
+        flex: 0 1 auto;
+        width: auto;
+        min-width: 0;
     }
 
     .priority-filter-wrapper {
-        min-width: 120px;
-        flex: 1 1 140px;
-        max-width: 180px;
+        flex: 0 1 auto;
+        width: auto;
+        min-width: 0;
     }
 
     .widget-content {

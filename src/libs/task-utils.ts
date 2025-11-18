@@ -320,6 +320,22 @@ export function applyFilter(tasks: Task[], filter: TaskFilter): Task[] {
         });
     }
 
+    // 完成日期筛选
+    if (filter.dateFilters?.completedDate?.enabled) {
+        const { start, end } = filter.dateFilters.completedDate;
+        filtered = filtered.filter(task => {
+            if (!task.completedAt) return false; // 没有完成日期的任务不显示
+            const completedDate = task.completedAt;
+            if (start && completedDate < start) return false;
+            if (end) {
+                const endOfDay = new Date(end);
+                endOfDay.setHours(23, 59, 59, 999);
+                if (completedDate > endOfDay) return false;
+            }
+            return true;
+        });
+    }
+
     // 关键词搜索
     if (filter.keyword) {
         const keyword = filter.keyword.toLowerCase();
