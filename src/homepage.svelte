@@ -7,6 +7,7 @@
     import ClockWidget from "./components/widgets/ClockWidget.svelte";
     import StatsWidget from "./components/widgets/StatsWidget.svelte";
     import TaskWidget from "./components/widgets/TaskWidget.svelte";
+    import SqlExecutorWidget from "./components/widgets/SqlExecutorWidget.svelte";
     import WidgetConfigPanel from "./components/WidgetConfigPanel.svelte";
 
     export let app; // Used for future features
@@ -40,6 +41,23 @@
             component: TaskWidget,
             defaultLayout: { colSpan: 12, rowSpan: 4 },
             defaultConfig: {}
+        },
+        'sql-executor': {
+            type: 'sql-executor',
+            name: 'SQL 执行器',
+            component: SqlExecutorWidget,
+            defaultLayout: { colSpan: 6, rowSpan: 4 },
+            defaultConfig: {
+                defaultSql: 'SELECT * FROM blocks WHERE type = \'d\' ORDER BY updated DESC LIMIT 100',
+                autoExecute: true,
+                linkColumns: {
+                    // 将 id 和 root_id 列渲染为思源块链接
+                    'id': 'siyuan://blocks/%s',
+                    'root_id': 'siyuan://blocks/%s'
+                },
+                columnOrder: '', // 列顺序，例如：'id, content, created, updated'
+                pageSize: 20 // 每页显示数量
+            }
         }
     };
 
@@ -208,7 +226,19 @@
                             <svg><use xlink:href="#iconMore"></use></svg>
                         </button>
                     </div>
-                    <svelte:component this={widget.component} colSpan={widget.colSpan} rowSpan={widget.rowSpan} {app} {plugin} />
+                    <svelte:component
+                        this={widget.component}
+                        colSpan={widget.colSpan}
+                        rowSpan={widget.rowSpan}
+                        config={widget.config}
+                        onConfigChange={(newConfig) => {
+                            widget.config = newConfig;
+                            widgets = [...widgets];
+                            saveConfig();
+                        }}
+                        {app}
+                        {plugin}
+                    />
                 </div>
             {/each}
         {/if}

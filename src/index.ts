@@ -34,6 +34,7 @@ import { IMenuItem } from "siyuan/types";
 import HelloExample from "@/hello.svelte";
 import SettingExample from "@/setting-example.svelte";
 import Homepage from "@/homepage.svelte";
+import SqlExecutorDemo from "@/sql-executor-demo.svelte";
 
 import { SettingUtils } from "./libs/setting-utils";
 import { svelteDialog } from "./libs/dialog";
@@ -41,12 +42,14 @@ import { svelteDialog } from "./libs/dialog";
 const STORAGE_NAME = "menu-config";
 const TAB_TYPE = "custom_tab";
 const HOMEPAGE_TAB_TYPE = "homepage_tab";
+const SQL_EXECUTOR_TAB_TYPE = "sql_executor_tab";
 const DOCK_TYPE = "dock_tab";
 
 export default class PluginSample extends Plugin {
 
     private custom: () => Custom;
     private homepageTab: () => Custom;
+    private sqlExecutorTab: () => Custom;
     private isMobile: boolean;
     private blockIconEventBindThis = this.blockIconEvent.bind(this);
     private settingUtils: SettingUtils;
@@ -133,6 +136,29 @@ export default class PluginSample extends Plugin {
             destroy() {
                 homepageApp?.$destroy();
                 console.log("destroy tab:", HOMEPAGE_TAB_TYPE);
+            }
+        });
+
+        // Register SQL Executor tab
+        let sqlExecutorDiv = document.createElement("div");
+        let sqlExecutorApp = null;
+        this.sqlExecutorTab = this.addTab({
+            type: SQL_EXECUTOR_TAB_TYPE,
+            init() {
+                sqlExecutorApp = new SqlExecutorDemo({
+                    target: sqlExecutorDiv,
+                    props: {
+                        app: this.app
+                    }
+                });
+                this.element.appendChild(sqlExecutorDiv);
+            },
+            beforeDestroy() {
+                console.log("before destroy tab:", SQL_EXECUTOR_TAB_TYPE);
+            },
+            destroy() {
+                sqlExecutorApp?.$destroy();
+                console.log("destroy tab:", SQL_EXECUTOR_TAB_TYPE);
             }
         });
 
@@ -522,6 +548,19 @@ export default class PluginSample extends Plugin {
         console.log("Opened homepage tab:", tab);
     }
 
+    private showSqlExecutor() {
+        const tab = openTab({
+            app: this.app,
+            custom: {
+                icon: "iconDatabase",
+                title: "SQL 执行器",
+                data: {},
+                id: this.name + SQL_EXECUTOR_TAB_TYPE
+            },
+        });
+        console.log("Opened SQL executor tab:", tab);
+    }
+
     private showDialog() {
         const docId = this.getEditor().protyle.block.rootID;
         svelteDialog({
@@ -558,6 +597,13 @@ export default class PluginSample extends Plugin {
             }
         });
         menu.addSeparator();
+        menu.addItem({
+            icon: "iconDatabase",
+            label: "SQL 执行器",
+            click: () => {
+                this.showSqlExecutor();
+            }
+        });
         menu.addItem({
             icon: "iconDrag",
             label: "Open Attribute Panel",
