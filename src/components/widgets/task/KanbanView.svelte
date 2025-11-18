@@ -20,6 +20,26 @@
         archive: { task: Task };
     }>();
 
+    // 监听容器宽度，动态调整列宽
+    let containerWidth = 0;
+
+    // 根据容器宽度计算每列的最小宽度
+    $: columnMinWidth = getColumnMinWidth(containerWidth);
+
+    function getColumnMinWidth(width: number): number {
+        if (width === 0) return 200; // 默认值
+
+        // 根据容器宽度动态计算最小列宽
+        const visibleColumns = config.columns.filter(c => !c.collapsed).length;
+        const gap = 16; // gap 大小
+        const padding = 24; // .kanban-columns 的左右 padding (12px * 2)
+        const availableWidth = width - padding - (visibleColumns - 1) * gap;
+        const calculatedWidth = availableWidth / visibleColumns;
+
+        // 设置合理的范围：最小 180px，最大 320px
+        return Math.max(180, Math.min(320, calculatedWidth));
+    }
+
     // 按列组织任务
     $: tasksByColumn = organizeTasksByColumn(tasks, config.columns);
 
@@ -99,8 +119,8 @@
     }
 </script>
 
-<div class="kanban-view">
-    <div class="kanban-columns">
+<div class="kanban-view" bind:clientWidth={containerWidth}>
+    <div class="kanban-columns" style="--column-min-width: {columnMinWidth}px;">
         {#each config.columns as column (column.id)}
             {@const columnTasks = tasksByColumn.get(column.id) || []}
             {#if config.showEmptyColumns || columnTasks.length > 0}
@@ -163,27 +183,32 @@
         width: 100%;
         height: 100%;
         overflow: auto;
-        padding: 12px;
+        display: flex;
+        flex-direction: column;
     }
 
     .kanban-columns {
         display: flex;
         gap: 16px;
-        min-height: min-content;
-        align-items: flex-start;
+        height: 100%;
+        align-items: stretch;
+        flex-wrap: nowrap;
+        padding: 12px;
+        --column-min-width: 200px; /* 默认值，会被 JS 动态覆盖 */
     }
 
     .kanban-column {
-        min-width: 280px;
-        max-width: 320px;
+        flex: 1 1 var(--column-min-width);
+        min-width: var(--column-min-width);
         background: var(--b3-theme-surface);
         border-radius: 8px;
         display: flex;
         flex-direction: column;
-        max-height: 100%;
+        overflow: hidden;
     }
 
     .kanban-column.collapsed {
+        flex: 0 0 60px;
         min-width: 60px;
         max-width: 60px;
     }
@@ -194,8 +219,7 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        position: sticky;
-        top: 0;
+        flex-shrink: 0;
         background: var(--b3-theme-surface);
         z-index: 1;
     }
@@ -206,6 +230,13 @@
         gap: 8px;
         font-weight: 600;
         color: var(--b3-theme-on-surface);
+        overflow: hidden;
+    }
+
+    .column-name {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     .collapsed .column-title {
@@ -220,6 +251,7 @@
         padding: 2px 8px;
         font-size: 12px;
         font-weight: 600;
+        flex-shrink: 0;
     }
 
     .collapse-btn {
@@ -230,6 +262,7 @@
         color: var(--b3-theme-on-surface);
         opacity: 0.6;
         transition: opacity 0.2s;
+        flex-shrink: 0;
     }
 
     .collapse-btn:hover {
@@ -237,14 +270,14 @@
     }
 
     .column-content {
-        flex: 1;
+        flex: 1 1 auto;
         overflow-y: auto;
         overflow-x: hidden;
         padding: 12px;
         display: flex;
         flex-direction: column;
         gap: 12px;
-        max-height: calc(100vh - 350px);
+        min-height: 0;
     }
 
     .empty-state {
@@ -259,6 +292,7 @@
         font-size: 12px;
         text-align: center;
         border-top: 1px solid var(--b3-border-color);
+        flex-shrink: 0;
     }
 
     .column-footer.warning {

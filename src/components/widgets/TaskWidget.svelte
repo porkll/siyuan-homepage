@@ -1038,24 +1038,12 @@
         border-bottom: 1px solid var(--b3-border-color);
         background: var(--b3-theme-background);
         display: flex;
-        gap: 12px;
-        align-items: center;
-        overflow-x: auto;
-        overflow-y: hidden;
-        flex-wrap: nowrap;
-    }
-
-    .filter-bar::-webkit-scrollbar {
-        height: 4px;
-    }
-
-    .filter-bar::-webkit-scrollbar-thumb {
-        background: var(--b3-theme-surface);
-        border-radius: 2px;
-    }
-
-    .filter-bar::-webkit-scrollbar-thumb:hover {
-        background: var(--b3-theme-primary-lighter);
+        gap: 8px;
+        align-items: flex-start;
+        flex-wrap: wrap;
+        flex-shrink: 0;
+        position: relative;
+        z-index: 10;
     }
 
     .quick-filters {
@@ -1088,28 +1076,30 @@
     }
 
     .notebook-filter-wrapper {
-        min-width: 280px;
-        width: 300px;
-        max-width: 40%;
-        flex-shrink: 0;
+        min-width: 160px;
+        flex: 1 1 220px;
+        max-width: 300px;
     }
 
     .date-filter-wrapper {
-        min-width: 180px;
-        width: 200px;
-        flex-shrink: 0;
+        min-width: 140px;
+        flex: 1 1 160px;
+        max-width: 200px;
     }
 
     .priority-filter-wrapper {
-        min-width: 160px;
-        width: 180px;
-        flex-shrink: 0;
+        min-width: 120px;
+        flex: 1 1 140px;
+        max-width: 180px;
     }
 
     .widget-content {
-        flex: 1;
+        flex: 1 1 auto;
         overflow: hidden;
         position: relative;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
     }
 
     .loading-state,

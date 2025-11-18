@@ -156,6 +156,8 @@
         cursor: pointer;
         transition: all 0.2s;
         position: relative;
+        min-width: 0;
+        width: 100%;
     }
 
     .task-card:hover {
@@ -177,6 +179,7 @@
         left: 0;
         right: 0;
         height: 3px;
+        border-radius: 6px 6px 0 0;
     }
 
     .task-content {
@@ -190,6 +193,7 @@
         -webkit-box-orient: vertical;
         overflow: hidden;
         max-height: 4.2em;
+        min-width: 0;
     }
 
     .task-meta {
@@ -198,6 +202,7 @@
         gap: 6px;
         margin-bottom: 6px;
         align-items: center;
+        min-width: 0;
     }
 
     .due-date {
@@ -206,6 +211,7 @@
         display: flex;
         align-items: center;
         gap: 4px;
+        white-space: nowrap;
     }
 
     .due-date.overdue {
@@ -217,6 +223,7 @@
         display: flex;
         gap: 4px;
         flex-wrap: wrap;
+        min-width: 0;
     }
 
     .tag {
@@ -225,6 +232,7 @@
         padding: 2px 8px;
         border-radius: 4px;
         font-size: 11px;
+        white-space: nowrap;
     }
 
     .progress-bar {
@@ -249,6 +257,7 @@
         border-top: 1px solid var(--b3-border-color);
         padding-top: 6px;
         margin-top: 6px;
+        min-width: 0;
     }
 
     .doc-name {
@@ -257,14 +266,18 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        flex: 1;
+        flex: 1 1 auto;
         min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 4px;
     }
 
     /* 默认隐藏操作按钮 */
     .task-card :global(.task-actions) {
         opacity: 0;
         transition: opacity 0.2s;
+        flex-shrink: 0;
     }
 
     /* 悬浮时显示操作按钮 */
