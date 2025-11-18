@@ -2,7 +2,7 @@
   新增任务对话框
 -->
 <script lang="ts">
-    import { createEventDispatcher } from 'svelte';
+    import { createEventDispatcher, onDestroy } from 'svelte';
     import type { TaskPriority } from '../../../types/task';
 
     const dispatch = createEventDispatcher();
@@ -13,6 +13,7 @@
     let priority: TaskPriority | '' = '';
     let dueDate = '';
     let submitting = false;
+    let closeTimeout: number | null = null;
 
     // 优先级选项
     const priorityOptions = [
@@ -39,15 +40,28 @@
         dispatch('submit', task);
 
         // 延迟关闭以等待任务完成
-        setTimeout(() => {
+        closeTimeout = window.setTimeout(() => {
             submitting = false;
             handleClose();
+            closeTimeout = null;
         }, 100);
     }
 
     function handleClose() {
+        // 清理定时器
+        if (closeTimeout !== null) {
+            clearTimeout(closeTimeout);
+            closeTimeout = null;
+        }
         dispatch('close');
     }
+
+    // 组件销毁时清理
+    onDestroy(() => {
+        if (closeTimeout !== null) {
+            clearTimeout(closeTimeout);
+        }
+    });
 
     function handleKeydown(e: KeyboardEvent) {
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {

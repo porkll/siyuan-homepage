@@ -3,7 +3,7 @@
   已选择的优先级显示为标签，可快速移除
 -->
 <script lang="ts">
-    import { createEventDispatcher } from 'svelte';
+    import { createEventDispatcher, onDestroy } from 'svelte';
     import type { TaskPriority } from '../../../types/task';
 
     export let selectedPriorities: TaskPriority[] = [];
@@ -31,13 +31,26 @@
         }
     }
 
-    $: if (typeof window !== 'undefined') {
-        if (showDropdown) {
-            document.addEventListener('click', handleClickOutside);
-        } else {
-            document.removeEventListener('click', handleClickOutside);
+    // 监听showDropdown变化，管理事件监听器
+    $: {
+        if (typeof window !== 'undefined') {
+            if (showDropdown) {
+                // 使用微任务延迟添加监听器，避免立即触发
+                Promise.resolve().then(() => {
+                    document.addEventListener('click', handleClickOutside);
+                });
+            } else {
+                document.removeEventListener('click', handleClickOutside);
+            }
         }
     }
+
+    // 组件销毁时清理监听器
+    onDestroy(() => {
+        if (typeof window !== 'undefined') {
+            document.removeEventListener('click', handleClickOutside);
+        }
+    });
 
     // 获取未选中的优先级
     $: availablePriorities = priorities.filter(p => !selectedPriorities.includes(p.value));

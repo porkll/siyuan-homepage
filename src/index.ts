@@ -77,15 +77,13 @@ export default class PluginSample extends Plugin {
 
         const frontEnd = getFrontend();
         this.isMobile = frontEnd === "mobile" || frontEnd === "browser-mobile";
-        // 图标的制作参见帮助文档
-        this.addIcons(`<symbol id="iconFace" viewBox="0 0 32 32">
-<path d="M13.667 17.333c0 0.92-0.747 1.667-1.667 1.667s-1.667-0.747-1.667-1.667 0.747-1.667 1.667-1.667 1.667 0.747 1.667 1.667zM20 15.667c-0.92 0-1.667 0.747-1.667 1.667s0.747 1.667 1.667 1.667 1.667-0.747 1.667-1.667-0.747-1.667-1.667-1.667zM29.333 16c0 7.36-5.973 13.333-13.333 13.333s-13.333-5.973-13.333-13.333 5.973-13.333 13.333-13.333 13.333 5.973 13.333 13.333zM14.213 5.493c1.867 3.093 5.253 5.173 9.12 5.173 0.613 0 1.213-0.067 1.787-0.16-1.867-3.093-5.253-5.173-9.12-5.173-0.613 0-1.213 0.067-1.787 0.16zM5.893 12.627c2.28-1.293 4.040-3.4 4.88-5.92-2.28 1.293-4.040 3.4-4.88 5.92zM26.667 16c0-1.040-0.16-2.040-0.44-2.987-0.933 0.2-1.893 0.32-2.893 0.32-4.173 0-7.893-1.92-10.347-4.92-1.4 3.413-4.187 6.093-7.653 7.4 0.013 0.053 0 0.12 0 0.187 0 5.88 4.787 10.667 10.667 10.667s10.667-4.787 10.667-10.667z"></path>
-</symbol>
-<symbol id="iconSaving" viewBox="0 0 32 32">
-<path d="M20 13.333c0-0.733 0.6-1.333 1.333-1.333s1.333 0.6 1.333 1.333c0 0.733-0.6 1.333-1.333 1.333s-1.333-0.6-1.333-1.333zM10.667 12h6.667v-2.667h-6.667v2.667zM29.333 10v9.293l-3.76 1.253-2.24 7.453h-7.333v-2.667h-2.667v2.667h-7.333c0 0-3.333-11.28-3.333-15.333s3.28-7.333 7.333-7.333h6.667c1.213-1.613 3.147-2.667 5.333-2.667 1.107 0 2 0.893 2 2 0 0.28-0.053 0.533-0.16 0.773-0.187 0.453-0.347 0.973-0.427 1.533l3.027 3.027h2.893zM26.667 12.667h-1.333l-4.667-4.667c0-0.867 0.12-1.72 0.347-2.547-1.293 0.333-2.347 1.293-2.787 2.547h-8.227c-2.573 0-4.667 2.093-4.667 4.667 0 2.507 1.627 8.867 2.68 12.667h2.653v-2.667h8v2.667h2.68l2.067-6.867 3.253-1.093v-4.707z"></path>
-</symbol>
-<symbol id="iconHome" viewBox="0 0 32 32">
-<path d="M16 2.667l-13.333 10.667v16h10.667v-10.667h5.333v10.667h10.667v-16l-13.333-10.667zM26.667 26.667h-5.333v-10.667h-10.667v10.667h-5.333v-13.333l10.667-8.533 10.667 8.533v13.333z"></path>
+
+        // 添加自定义图标
+        this.addIcons(`<symbol id="iconHomepage" viewBox="0 0 32 32">
+<path d="M4 6h8v8H4V6zm10 0h8v8h-8V6zm10 0h4v8h-4V6zM4 16h8v8H4v-8zm10 0h8v8h-8v-8zm10 0h4v8h-4v-8zM4 26h8v2H4v-2zm10 0h8v2h-8v-2zm10 0h4v2h-4v-2z" fill="currentColor"/>
+<circle cx="8" cy="10" r="1.5" fill="var(--b3-theme-primary)"/>
+<circle cx="18" cy="10" r="1.5" fill="var(--b3-theme-primary)"/>
+<circle cx="26" cy="10" r="1.5" fill="var(--b3-theme-primary)"/>
 </symbol>`);
 
         let tabDiv = document.createElement("div");
@@ -182,7 +180,7 @@ export default class PluginSample extends Plugin {
             config: {
                 position: "LeftBottom",
                 size: { width: 200, height: 0 },
-                icon: "iconSaving",
+                icon: "iconLayout",
                 title: "Custom Dock",
                 hotkey: "⌥⌘W",
             },
@@ -400,7 +398,7 @@ export default class PluginSample extends Plugin {
     onLayoutReady() {
         // Add home icon to topbar
         this.addTopBar({
-            icon: "iconHome",
+            icon: "iconHomepage",
             title: this.i18n.homeIconTitle,
             position: "left",
             callback: () => {
@@ -409,7 +407,7 @@ export default class PluginSample extends Plugin {
         });
 
         const topBarElement = this.addTopBar({
-            icon: "iconFace",
+            icon: "iconMenu",
             title: this.i18n.addTopBarIcon,
             position: "right",
             callback: () => {
@@ -539,7 +537,7 @@ export default class PluginSample extends Plugin {
         const tab = openTab({
             app: this.app,
             custom: {
-                icon: "iconHome",
+                icon: "iconHomepage",
                 title: this.i18n.homepageTitle || "Homepage",
                 data: {},
                 id: this.name + HOMEPAGE_TAB_TYPE
@@ -632,13 +630,13 @@ export default class PluginSample extends Plugin {
         });
         if (!this.isMobile) {
             menu.addItem({
-                icon: "iconFace",
+                icon: "iconMenu",
                 label: "Open Custom Tab(open doc first)",
                 click: () => {
                     const tab = openTab({
                         app: this.app,
                         custom: {
-                            icon: "iconFace",
+                            icon: "iconMenu",
                             title: "Custom Tab",
                             data: {
                                 // text: platformUtils.isHuawei() ? "Hello, Huawei!" : "This is my custom tab",

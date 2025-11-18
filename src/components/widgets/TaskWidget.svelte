@@ -3,7 +3,7 @@
   支持看板视图、列表视图、日历视图等多种视图模式
 -->
 <script lang="ts">
-    import { onMount } from 'svelte';
+    import { onMount, onDestroy } from 'svelte';
     import { fetchPost, openTab } from 'siyuan';
     import { ListTodo, RefreshCw, Eye, EyeOff, LayoutGrid, Plus, Settings } from 'lucide-svelte';
     import type {
@@ -112,6 +112,8 @@
     let showSettings = false;
     let showAddDialog = false;
     let showSettingsDialog = false;
+    let scrollTimeout: number | null = null;  // 滚动定时器
+    let mounted = true;  // 组件挂载状态
 
     // 任务设置（日记笔记本等）
     let taskSettings = {
@@ -131,6 +133,14 @@
         if (config.preferences?.autoRefresh) {
             const interval = setInterval(loadTasks, (config.preferences.refreshInterval || 300) * 1000);
             return () => clearInterval(interval);
+        }
+    });
+
+    // 组件销毁时清理
+    onDestroy(() => {
+        mounted = false;  // 标记组件已销毁
+        if (scrollTimeout !== null) {
+            clearTimeout(scrollTimeout);
         }
     });
 
@@ -208,6 +218,9 @@
         try {
             const sql = buildTaskQuery(config.filter);
             fetchPost('/api/query/sql', { stmt: sql }, (response) => {
+                // 检查组件是否已销毁
+                if (!mounted) return;
+
                 if (response && response.code === 0) {
                     allTasks = transformTasks(response.data);
                     updateFilteredTasks();
@@ -217,6 +230,7 @@
                 loading = false;
             });
         } catch (err) {
+            if (!mounted) return;
             console.error('Failed to load tasks:', err);
             error = '网络错误，请稍后重试';
             loading = false;
@@ -254,6 +268,13 @@
     // 处理任务点击（跳转到文档）
     function handleTaskClick(event: CustomEvent<Task>) {
         const task = event.detail;
+
+        // 清理之前的滚动定时器，避免多个滚动冲突
+        if (scrollTimeout !== null) {
+            clearTimeout(scrollTimeout);
+            scrollTimeout = null;
+        }
+
         try {
             // 打开文档标签页
             openTab({
@@ -265,13 +286,14 @@
             });
 
             // 延迟后滚动到任务块
-            setTimeout(() => {
+            scrollTimeout = window.setTimeout(() => {
                 const taskElement = document.querySelector(
                     `.protyle-wysiwyg [data-node-id="${task.id}"]`
                 );
                 if (taskElement) {
                     taskElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 }
+                scrollTimeout = null;
             }, 300);
         } catch (err) {
             console.error('Failed to open task:', err);
