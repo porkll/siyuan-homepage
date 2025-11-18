@@ -3,7 +3,7 @@
  Description  : Modular Homepage component for SiYuan (WeTab-style)
 -->
 <script lang="ts">
-    import { onMount } from 'svelte';
+    import { onMount, tick } from 'svelte';
     import ClockWidget from "./components/widgets/ClockWidget.svelte";
     import StatsWidget from "./components/widgets/StatsWidget.svelte";
     import TaskWidget from "./components/widgets/TaskWidget.svelte";
@@ -15,6 +15,16 @@
     export let plugin; // 插件实例，用于保存配置
 
     const STORAGE_KEY = 'homepage-widgets-config';
+
+    // 布局常量
+    const FIXED_ROWS = 8; // 固定行数
+    const GRID_GAP = 20; // 网格间距 (px)
+    const CONTAINER_PADDING = 32; // 容器内边距 (16px * 2)
+
+    // 动态布局状态
+    let containerElement: HTMLElement;
+    let calculatedRowHeight = 120; // 动态计算的行高
+    let lastHeight = 0; // 上次的高度，用于检测变化
 
     // 组件注册表 - 定义所有可用的组件类型
     const WIDGET_REGISTRY = {
@@ -101,7 +111,13 @@
     ];
 
     let widgets = [...defaultWidgets];
-    let contextMenu = {
+    let contextMenu: {
+        show: boolean;
+        x: number;
+        y: number;
+        widget: WidgetInstance | null;
+        index: number;
+    } = {
         show: false,
         x: 0,
         y: 0,
@@ -126,6 +142,32 @@
             ...w,
             component: WIDGET_REGISTRY[w.type]?.component
         }));
+
+        // 初始化布局计算 - 等待 DOM 更新完成
+        await tick();
+        requestAnimationFrame(() => {
+            if (containerElement) {
+                calculateLayout(containerElement.clientHeight);
+            }
+        });
+
+        // 监听窗口大小变化（带防抖）
+        let resizeTimeout: number;
+        const handleResize = () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = window.setTimeout(() => {
+                if (containerElement) {
+                    calculateLayout(containerElement.clientHeight);
+                }
+            }, 100);
+        };
+
+        window.addEventListener('resize', handleResize);
+
+        return () => {
+            window.removeEventListener('resize', handleResize);
+            clearTimeout(resizeTimeout);
+        };
     });
 
     // 保存配置到存储
@@ -140,14 +182,14 @@
     }
 
     // 右键菜单处理
-    function handleWidgetContextMenu(e: MouseEvent, widget: any, index: number) {
+    function handleWidgetContextMenu(e: MouseEvent, widget: WidgetInstance) {
         e.preventDefault();
         contextMenu = {
             show: true,
             x: e.clientX,
             y: e.clientY,
             widget,
-            index
+            index: -1
         };
     }
 
@@ -200,10 +242,35 @@
     let showConfigPanel = false;
 
     $: enabledWidgets = widgets.filter(w => w.enabled && w.component);
+
+    // 计算动态行高（固定行数）
+    function calculateLayout(height: number) {
+        if (height <= 0) {
+            return;
+        }
+
+        // 防止微小变化导致的重复计算（阈值：5px）
+        if (Math.abs(height - lastHeight) < 5) {
+            return;
+        }
+
+        lastHeight = height;
+
+        // 计算可用高度
+        const availableHeight = height - CONTAINER_PADDING;
+
+        // 基于固定行数计算行高
+        // 注意：间距数量 = 行数 - 1（例如8行有7个间距）
+        const totalGapHeight = (FIXED_ROWS - 1) * GRID_GAP;
+        const rowHeight = Math.floor((availableHeight - totalGapHeight) / FIXED_ROWS);
+
+        calculatedRowHeight = rowHeight;
+    }
+
 </script>
 
-<div class="homepage-container">
-    <div class="widgets-grid">
+<div class="homepage-container" bind:this={containerElement}>
+    <div class="widgets-grid" style="--row-height: {calculatedRowHeight}px;">
         {#if enabledWidgets.length === 0}
             <!-- 空状态：显示添加组件占位符 -->
             <div class="empty-widget-placeholder" on:click={() => showConfigPanel = true}>
@@ -211,16 +278,16 @@
                 <span>添加组件</span>
             </div>
         {:else}
-            {#each enabledWidgets as widget, index}
+            {#each enabledWidgets as widget}
                 <div
                     class="widget-wrapper"
                     style="grid-column: span {widget.colSpan}; grid-row: span {widget.rowSpan};"
-                    on:contextmenu={(e) => handleWidgetContextMenu(e, widget, index)}
+                    on:contextmenu={(e) => handleWidgetContextMenu(e, widget)}
                 >
                     <div class="widget-header-actions">
                         <button
                             class="widget-action-btn"
-                            on:click={(e) => handleWidgetContextMenu(e, widget, index)}
+                            on:click={(e) => handleWidgetContextMenu(e, widget)}
                             title="配置"
                         >
                             <svg><use xlink:href="#iconMore"></use></svg>
@@ -231,7 +298,7 @@
                         colSpan={widget.colSpan}
                         rowSpan={widget.rowSpan}
                         config={widget.config}
-                        onConfigChange={(newConfig) => {
+                        onConfigChange={(newConfig: any) => {
                             widget.config = newConfig;
                             widgets = [...widgets];
                             saveConfig();
@@ -291,6 +358,7 @@
     <WidgetConfigPanel
         bind:widgets={widgets}
         {WIDGET_REGISTRY}
+        maxRows={FIXED_ROWS}
         onClose={() => showConfigPanel = false}
         on:save={(e) => {
             widgets = e.detail.widgets;
@@ -301,18 +369,26 @@
 
 <style lang="scss">
     .homepage-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
         padding: 16px;
-        height: 100%;
-        overflow-y: auto;
-        position: relative;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        box-sizing: border-box;
     }
 
     .widgets-grid {
         display: grid;
         grid-template-columns: repeat(12, 1fr);
-        grid-auto-rows: 120px;
+        grid-auto-rows: var(--row-height, 120px);
         grid-auto-flow: dense;
         gap: 20px;
+        flex: 1;
+        min-height: 0;
     }
 
     .empty-widget-placeholder {

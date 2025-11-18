@@ -6,6 +6,7 @@
 
     export let widgets = [];
     export let WIDGET_REGISTRY;
+    export let maxRows: number = 10; // 动态最大行数
     export let onClose: () => void;
 
     const dispatch = createEventDispatcher();
@@ -111,11 +112,12 @@
                                     <input
                                         type="number"
                                         min="1"
-                                        max="10"
+                                        max={maxRows}
                                         value={widget.rowSpan}
                                         on:change={(e) => handleGridChange(widget.id, 'rowSpan', parseInt(e.target.value))}
                                         disabled={!widget.enabled}
                                     />
+                                    <span class="max-hint">最多{maxRows}行</span>
                                 </div>
                             </div>
                         </div>
@@ -334,6 +336,12 @@
                 opacity: 0.5;
                 cursor: not-allowed;
             }
+        }
+
+        .max-hint {
+            font-size: 10px;
+            color: var(--b3-theme-on-surface-light);
+            opacity: 0.7;
         }
     }
 
