@@ -33,6 +33,8 @@
 
     export let app; // App 实例，用于打开文档
     export let plugin; // 插件实例，用于保存配置
+    export let colSpan: number = 12; // 占据的列数
+    export let rowSpan: number = 4; // 占据的行数
 
     const STORAGE_KEY = 'task-widget-config';
 
@@ -312,6 +314,17 @@
                 }
             }
 
+            // 完成时间管理：记录任务完成的准确时间戳
+            if (toStatus === 'done') {
+                // 移动到已完成状态时，设置当前时间为完成时间
+                attrs[TASK_ATTRS.COMPLETED_TIME] = new Date().toISOString();
+            } else if (toStatus === 'todo' || toStatus === 'in-progress' || toStatus === 'review') {
+                // 从已完成移回活跃状态时，清除完成时间（通过设置空字符串删除属性）
+                if (task.customAttrs?.[TASK_ATTRS.COMPLETED_TIME]) {
+                    attrs[TASK_ATTRS.COMPLETED_TIME] = '';
+                }
+            }
+
             // 先更新属性，再更新 markdown
             fetchPost('/api/attr/setBlockAttrs', {
                 id: task.id,
@@ -461,8 +474,14 @@
         try {
             // 归档任务：设置状态为 archived 并标记为已完成
             const attrs: Record<string, string> = {
-                [TASK_ATTRS.STATUS]: 'archived'
+                [TASK_ATTRS.STATUS]: 'archived',
+                [TASK_ATTRS.ARCHIVED_TIME]: new Date().toISOString()
             };
+
+            // 如果任务还没有完成时间，也设置完成时间
+            if (!task.customAttrs?.[TASK_ATTRS.COMPLETED_TIME]) {
+                attrs[TASK_ATTRS.COMPLETED_TIME] = new Date().toISOString();
+            }
 
             // 先更新属性
             fetchPost('/api/attr/setBlockAttrs', {

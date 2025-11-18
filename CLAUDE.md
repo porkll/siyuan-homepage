@@ -128,3 +128,7 @@ Final package.zip must contain:
 - Unused locals/parameters: Enabled
 - Path aliases configured for `@/*` imports
 - Svelte type checking enabled (`checkJs: true`)
+
+## Development Lessons Learned
+
+**Avoiding Infinite Loops with Third-Party Libraries**: When integrating libraries like flatpickr with Svelte, avoid using reactive statements (`$:`) to directly update the library instance, as this can cause infinite loops that freeze the application. Instead, use `afterUpdate()` lifecycle hook with change detection by tracking previous values. Always compare current and previous values before updating, and use library API parameters (e.g., `setDate(dates, false)`) to prevent triggering callbacks that would re-trigger Svelte's reactive system.

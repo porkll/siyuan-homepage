@@ -22,6 +22,8 @@ export const TASK_ATTRS = {
     STATUS: 'custom-task-status',
     PRIORITY: 'custom-task-priority',
     DUE_DATE: 'custom-task-duedate',
+    COMPLETED_TIME: 'custom-task-completed-time',
+    ARCHIVED_TIME: 'custom-task-archived-time',
     DAILY_TODO_HEADING: 'custom-daily-todo',
 } as const;
 
@@ -103,6 +105,30 @@ export function extractDueDate(customAttrs: Record<string, any>): Date | undefin
 }
 
 /**
+ * 从自定义属性中提取完成时间
+ */
+export function extractCompletedTime(customAttrs: Record<string, any>): Date | undefined {
+    const completedTime = customAttrs[TASK_ATTRS.COMPLETED_TIME];
+    if (completedTime) {
+        const date = new Date(completedTime);
+        return isNaN(date.getTime()) ? undefined : date;
+    }
+    return undefined;
+}
+
+/**
+ * 从自定义属性中提取归档时间
+ */
+export function extractArchivedTime(customAttrs: Record<string, any>): Date | undefined {
+    const archivedTime = customAttrs[TASK_ATTRS.ARCHIVED_TIME];
+    if (archivedTime) {
+        const date = new Date(archivedTime);
+        return isNaN(date.getTime()) ? undefined : date;
+    }
+    return undefined;
+}
+
+/**
  * 将思源时间戳（14位字符串：yyyyMMddHHmmss）转换为 Date 对象
  */
 export function parseSiyuanTimestamp(timestamp: string): Date {
@@ -135,6 +161,10 @@ export function transformTaskBlock(block: TaskBlock): Task {
     // 从 hpath 提取文档名称（最后一个 / 后面的部分）
     const docName = block.hpath ? block.hpath.split('/').pop() || 'Untitled' : 'Untitled';
 
+    // 提取完成时间和归档时间
+    const completedTime = extractCompletedTime(customAttrs);
+    const archivedTime = extractArchivedTime(customAttrs);
+
     return {
         id: block.id,
         content,
@@ -147,7 +177,9 @@ export function transformTaskBlock(block: TaskBlock): Task {
         createdAt: parseSiyuanTimestamp(block.created),
         updatedAt: parseSiyuanTimestamp(block.updated),
         dueDate: extractDueDate(customAttrs),
-        completedAt: completed ? parseSiyuanTimestamp(block.updated) : undefined,
+        // 完成时间优先使用自定义属性，如果没有则回退使用更新时间（仅限已完成但非归档的任务）
+        completedAt: completedTime || (completed && status !== 'archived' ? parseSiyuanTimestamp(block.updated) : undefined),
+        archivedAt: archivedTime,
 
         notebookId: block.box,
         notebookName: block.boxName || block.box,

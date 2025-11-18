@@ -3,7 +3,7 @@
   一次点击选择日期范围
 -->
 <script lang="ts">
-    import { onMount, onDestroy } from 'svelte';
+    import { onMount, onDestroy, afterUpdate } from 'svelte';
     import { createEventDispatcher } from 'svelte';
     import flatpickr from 'flatpickr';
     import type { Instance } from 'flatpickr/dist/types/instance';
@@ -23,46 +23,28 @@
 
     let inputElement: HTMLInputElement;
     let flatpickrInstance: Instance | null = null;
-
-    // 格式化日期显示
-    function formatDateRange(start?: Date, end?: Date): string {
-        if (!start && !end) return '';
-
-        const formatDate = (date: Date | string) => {
-            // 确保是 Date 对象
-            const d = date instanceof Date ? date : new Date(date);
-            if (isNaN(d.getTime())) return '';
-
-            const month = String(d.getMonth() + 1).padStart(2, '0');
-            const day = String(d.getDate()).padStart(2, '0');
-            return `${month}-${day}`;
-        };
-
-        if (start && end) {
-            return `${formatDate(start)} 至 ${formatDate(end)}`;
-        } else if (start) {
-            return `从 ${formatDate(start)}`;
-        } else if (end) {
-            return `到 ${formatDate(end)}`;
-        }
-        return '';
-    }
+    let lastFilterStart: Date | undefined = undefined;
+    let lastFilterEnd: Date | undefined = undefined;
 
     onMount(() => {
+        // 准备默认日期
         const defaultDates: Date[] = [];
         if (filter.start) {
             const startDate = filter.start instanceof Date ? filter.start : new Date(filter.start);
             if (!isNaN(startDate.getTime())) {
                 defaultDates.push(startDate);
+                lastFilterStart = startDate;
             }
         }
         if (filter.end) {
             const endDate = filter.end instanceof Date ? filter.end : new Date(filter.end);
             if (!isNaN(endDate.getTime())) {
                 defaultDates.push(endDate);
+                lastFilterEnd = endDate;
             }
         }
 
+        // 初始化 flatpickr
         flatpickrInstance = flatpickr(inputElement, {
             mode: 'range',
             dateFormat: 'm-d',
@@ -75,14 +57,20 @@
                     filter.start = selectedDates[0];
                     filter.end = selectedDates[1];
                     filter.enabled = true;
+                    lastFilterStart = selectedDates[0];
+                    lastFilterEnd = selectedDates[1];
                 } else if (selectedDates.length === 1) {
                     filter.start = selectedDates[0];
                     filter.end = undefined;
                     filter.enabled = true;
+                    lastFilterStart = selectedDates[0];
+                    lastFilterEnd = undefined;
                 } else {
                     filter.start = undefined;
                     filter.end = undefined;
                     filter.enabled = false;
+                    lastFilterStart = undefined;
+                    lastFilterEnd = undefined;
                 }
                 dispatch('change', { ...filter });
             },
@@ -93,6 +81,42 @@
                 }
             }
         });
+    });
+
+    // 检测外部数据变化（如从配置加载），更新 flatpickr 显示
+    afterUpdate(() => {
+        if (!flatpickrInstance) return;
+
+        // 比较当前 filter 和上次记录的值
+        const startChanged = filter.start?.getTime() !== lastFilterStart?.getTime();
+        const endChanged = filter.end?.getTime() !== lastFilterEnd?.getTime();
+
+        if (startChanged || endChanged) {
+            const dates: Date[] = [];
+            if (filter.start) {
+                const startDate = filter.start instanceof Date ? filter.start : new Date(filter.start);
+                if (!isNaN(startDate.getTime())) {
+                    dates.push(startDate);
+                }
+            }
+            if (filter.end) {
+                const endDate = filter.end instanceof Date ? filter.end : new Date(filter.end);
+                if (!isNaN(endDate.getTime())) {
+                    dates.push(endDate);
+                }
+            }
+
+            // 更新 flatpickr（triggerChange: false 避免触发 onChange）
+            if (dates.length > 0) {
+                flatpickrInstance.setDate(dates, false);
+            } else {
+                flatpickrInstance.clear();
+            }
+
+            // 更新记录的值
+            lastFilterStart = filter.start;
+            lastFilterEnd = filter.end;
+        }
     });
 
     onDestroy(() => {
@@ -108,11 +132,12 @@
         filter.start = undefined;
         filter.end = undefined;
         filter.enabled = false;
+        lastFilterStart = undefined;
+        lastFilterEnd = undefined;
         dispatch('change', { ...filter });
     }
 
     $: hasValue = filter.start || filter.end;
-    $: displayValue = formatDateRange(filter.start, filter.end);
 </script>
 
 <div class="date-range-selector">

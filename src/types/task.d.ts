@@ -63,6 +63,7 @@ export interface Task {
     updatedAt: Date;               // 更新时间
     dueDate?: Date;                // 截止日期
     completedAt?: Date;            // 完成时间
+    archivedAt?: Date;             // 归档时间
 
     // 位置信息
     notebookId: string;            // 笔记本 ID
