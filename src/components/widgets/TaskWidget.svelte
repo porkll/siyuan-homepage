@@ -898,42 +898,42 @@
     }
 
     .widget-header {
-        padding: 10px 12px;
+        padding: 6px 10px;
         border-bottom: 1px solid var(--b3-border-color);
         background: var(--b3-theme-surface);
         display: flex;
         justify-content: space-between;
         align-items: center;
-        gap: 12px;
+        gap: 8px;
         flex-wrap: wrap;
     }
 
     .title-section {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 6px;
         flex-wrap: wrap;
     }
 
     .widget-title {
         margin: 0;
-        font-size: 14px;
+        font-size: 13px;
         font-weight: 600;
         color: var(--b3-theme-on-surface);
     }
 
     .stats-badges {
         display: flex;
-        gap: 6px;
+        gap: 4px;
         flex-wrap: wrap;
     }
 
     .badge {
-        padding: 2px 8px;
-        border-radius: 10px;
-        font-size: 11px;
+        padding: 1px 6px;
+        border-radius: 8px;
+        font-size: 10px;
         font-weight: 500;
-        min-width: 24px;
+        min-width: 20px;
         text-align: center;
     }
 
@@ -954,23 +954,23 @@
 
     .actions {
         display: flex;
-        gap: 8px;
+        gap: 6px;
         align-items: center;
     }
 
     .add-btn {
-        padding: 4px 12px;
+        padding: 3px 10px;
         border: none;
         background: var(--b3-theme-primary);
         color: white;
         cursor: pointer;
         border-radius: 4px;
-        font-size: 13px;
+        font-size: 12px;
         font-weight: 500;
         transition: all 0.2s;
         display: flex;
         align-items: center;
-        gap: 4px;
+        gap: 3px;
     }
 
     .add-btn:hover {
@@ -980,19 +980,19 @@
 
     .view-switcher {
         display: flex;
-        gap: 4px;
+        gap: 2px;
         background: var(--b3-theme-background);
-        border-radius: 6px;
-        padding: 4px;
+        border-radius: 4px;
+        padding: 3px;
     }
 
     .view-btn {
-        padding: 4px 10px;
+        padding: 3px 8px;
         border: none;
         background: none;
         cursor: pointer;
-        border-radius: 4px;
-        font-size: 14px;
+        border-radius: 3px;
+        font-size: 13px;
         transition: all 0.2s;
         opacity: 0.6;
     }
@@ -1014,12 +1014,12 @@
     }
 
     .icon-btn {
-        padding: 4px 8px;
+        padding: 3px 6px;
         border: 1px solid var(--b3-border-color);
         background: var(--b3-theme-background);
         cursor: pointer;
         border-radius: 4px;
-        font-size: 14px;
+        font-size: 13px;
         transition: all 0.2s;
     }
 
@@ -1034,11 +1034,11 @@
 
     /* 筛选栏样式 */
     .filter-bar {
-        padding: 8px 12px;
+        padding: 6px 10px;
         border-bottom: 1px solid var(--b3-border-color);
         background: var(--b3-theme-background);
         display: flex;
-        gap: 8px;
+        gap: 6px;
         align-items: flex-start;
         flex-wrap: wrap;
         flex-shrink: 0;
@@ -1048,18 +1048,18 @@
 
     .quick-filters {
         display: flex;
-        gap: 6px;
+        gap: 4px;
         align-items: center;
         flex-shrink: 0;
     }
 
     .filter-chip {
-        padding: 4px 12px;
+        padding: 3px 10px;
         border: 1px solid var(--b3-border-color);
         background: var(--b3-theme-surface);
         cursor: pointer;
-        border-radius: 16px;
-        font-size: 12px;
+        border-radius: 12px;
+        font-size: 11px;
         transition: all 0.2s;
         white-space: nowrap;
     }

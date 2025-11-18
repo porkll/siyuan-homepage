@@ -11,7 +11,11 @@
     // 本地状态
     let defaultSql = config.defaultSql || '';
     let autoExecute = config.autoExecute !== false; // 默认为 true
-    let linkColumnsText = formatLinkColumnsToText(config.linkColumns || {});
+    let linkColumnsText = formatLinkColumnsToText(config.linkColumns || {
+        id: 'siyuan://blocks/%s',
+        root_id: 'siyuan://blocks/%s'
+    });
+    let timeColumnsText = formatArrayToText(config.timeColumns || ['created', 'updated']);
     let columnOrder = config.columnOrder || '';
     let pageSize = config.pageSize || 20;
 
@@ -37,11 +41,24 @@
         return result;
     }
 
+    // 将数组转换为文本格式（每行一个）
+    function formatArrayToText(arr: string[]): string {
+        return arr.join('\n');
+    }
+
+    // 将文本格式转换为数组
+    function parseTextToArray(text: string): string[] {
+        return text.split('\n')
+            .map(line => line.trim())
+            .filter(line => line.length > 0);
+    }
+
     function handleSave() {
         const newConfig = {
             defaultSql: defaultSql.trim(),
             autoExecute,
             linkColumns: parseLinkColumnsFromText(linkColumnsText),
+            timeColumns: parseTextToArray(timeColumnsText),
             columnOrder: columnOrder.trim(),
             pageSize: Math.max(5, Math.min(500, pageSize))
         };
@@ -83,6 +100,16 @@
                 bind:value={linkColumnsText}
                 placeholder="id=siyuan://blocks/%s&#10;root_id=siyuan://blocks/%s"
                 rows="3"
+            />
+        </div>
+
+        <div class="setting-item">
+            <label for="time-columns">时间列配置 <span class="hint-inline">（每行一个列名，格式：20251118174157）</span></label>
+            <textarea
+                id="time-columns"
+                bind:value={timeColumnsText}
+                placeholder="created&#10;updated"
+                rows="2"
             />
         </div>
 

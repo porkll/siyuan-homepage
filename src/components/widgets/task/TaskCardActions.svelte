@@ -125,7 +125,7 @@
             on:click={toggleDatePicker}
             title="设置截止时间"
         >
-            <Calendar size={14} />
+            <Calendar size={12} />
         </button>
 
         {#if showDatePicker}
@@ -162,7 +162,7 @@
             on:click={togglePrioritySelector}
             title="设置优先级"
         >
-            <Tag size={14} />
+            <Tag size={12} />
         </button>
 
         {#if showPrioritySelector}
@@ -190,14 +190,14 @@
         on:click={handleArchive}
         title="归档任务"
     >
-        <Archive size={14} />
+        <Archive size={12} />
     </button>
 </div>
 
 <style>
     .task-actions {
         display: flex;
-        gap: 3px;
+        gap: 2px;
         justify-content: flex-end;
         flex-shrink: 0;
     }
@@ -207,18 +207,18 @@
     }
 
     .action-btn {
-        padding: 2px 6px;
+        padding: 2px 4px;
         border: 1px solid var(--b3-border-color);
         background: var(--b3-theme-surface);
         cursor: pointer;
         border-radius: 3px;
-        font-size: 12px;
+        font-size: 11px;
         transition: all 0.2s;
         display: flex;
         align-items: center;
         justify-content: center;
-        min-width: 24px;
-        height: 24px;
+        min-width: 20px;
+        height: 20px;
     }
 
     .action-btn:hover {

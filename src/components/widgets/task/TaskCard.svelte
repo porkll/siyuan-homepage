@@ -151,22 +151,23 @@
     .task-card {
         background: var(--b3-theme-background);
         border: 1px solid var(--b3-border-color);
-        border-radius: 6px;
-        padding: 8px 12px 12px 12px;
+        border-radius: 5px;
+        padding: 6px 8px 8px 8px;
         cursor: pointer;
-        transition: all 0.2s;
+        transition: all 0.15s;
         position: relative;
         min-width: 0;
         width: 100%;
+        box-sizing: border-box;
     }
 
     .task-card:hover {
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-        transform: translateY(-2px);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        transform: translateY(-1px);
     }
 
     .task-card.overdue {
-        border-left: 3px solid #ef4444;
+        border-left: 2px solid #ef4444;
     }
 
     .task-card.dropdown-open {
@@ -178,39 +179,39 @@
         top: 0;
         left: 0;
         right: 0;
-        height: 3px;
-        border-radius: 6px 6px 0 0;
+        height: 2px;
+        border-radius: 5px 5px 0 0;
     }
 
     .task-content {
-        margin: 0 0 8px 0;
+        margin: 0 0 6px 0;
         color: var(--b3-theme-on-background);
-        font-size: 14px;
-        line-height: 1.4;
+        font-size: 13px;
+        line-height: 1.35;
         word-break: break-word;
         display: -webkit-box;
-        -webkit-line-clamp: 3;
+        -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
         overflow: hidden;
-        max-height: 4.2em;
+        max-height: 2.7em;
         min-width: 0;
     }
 
     .task-meta {
         display: flex;
         flex-wrap: wrap;
-        gap: 6px;
-        margin-bottom: 6px;
+        gap: 4px;
+        margin-bottom: 4px;
         align-items: center;
         min-width: 0;
     }
 
     .due-date {
-        font-size: 12px;
+        font-size: 11px;
         color: var(--b3-theme-on-surface-light);
         display: flex;
         align-items: center;
-        gap: 4px;
+        gap: 3px;
         white-space: nowrap;
     }
 
@@ -221,7 +222,7 @@
 
     .tags {
         display: flex;
-        gap: 4px;
+        gap: 3px;
         flex-wrap: wrap;
         min-width: 0;
     }
@@ -229,18 +230,18 @@
     .tag {
         background: var(--b3-theme-primary-lightest);
         color: var(--b3-theme-primary);
-        padding: 2px 8px;
-        border-radius: 4px;
-        font-size: 11px;
+        padding: 1px 6px;
+        border-radius: 3px;
+        font-size: 10px;
         white-space: nowrap;
     }
 
     .progress-bar {
-        height: 4px;
+        height: 3px;
         background: var(--b3-theme-surface);
-        border-radius: 2px;
+        border-radius: 1.5px;
         overflow: hidden;
-        margin-top: 8px;
+        margin-top: 6px;
     }
 
     .progress-fill {
@@ -253,24 +254,24 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 8px;
+        gap: 4px;
         border-top: 1px solid var(--b3-border-color);
-        padding-top: 6px;
-        margin-top: 6px;
+        padding-top: 4px;
+        margin-top: 4px;
         min-width: 0;
     }
 
     .doc-name {
-        font-size: 11px;
+        font-size: 10px;
         color: var(--b3-theme-on-surface-light);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        flex: 1 1 auto;
+        flex: 1 1 0;
         min-width: 0;
         display: flex;
         align-items: center;
-        gap: 4px;
+        gap: 3px;
     }
 
     /* 默认隐藏操作按钮 */

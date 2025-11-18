@@ -17,11 +17,16 @@
     let columns: string[] = [];
     let loading: boolean = false;
     let error: string = "";
-    let isInputCollapsed: boolean = true; // 默认折叠输入区域
     let currentPage: number = 0;
 
-    // 链接配置：{ columnName: 'siyuan://blocks/%s' }
-    $: linkColumns = config.linkColumns || {};
+    // 链接配置：{ columnName: 'siyuan://blocks/%s' }，默认包含 id 和 root_id
+    $: linkColumns = config.linkColumns || {
+        id: 'siyuan://blocks/%s',
+        root_id: 'siyuan://blocks/%s'
+    };
+
+    // 时间列配置：['created', 'updated']，默认包含 created 和 updated
+    $: timeColumns = config.timeColumns || ['created', 'updated'];
 
     // 列顺序配置
     $: columnOrderList = config.columnOrder
@@ -88,18 +93,6 @@
         }
     }
 
-    // 支持 Ctrl+Enter 快捷键执行
-    function handleKeydown(event: KeyboardEvent) {
-        if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-            event.preventDefault();
-            executeQuery();
-        }
-    }
-
-    // 切换输入区域折叠状态
-    function toggleInput() {
-        isInputCollapsed = !isInputCollapsed;
-    }
 
     // 格式化链接
     function formatLink(template: string, value: any): string {
@@ -111,6 +104,38 @@
     // 检查列是否应该渲染为链接
     function shouldRenderAsLink(columnName: string): boolean {
         return columnName in linkColumns;
+    }
+
+    // 检查列是否应该渲染为时间
+    function shouldRenderAsTime(columnName: string): boolean {
+        return timeColumns.includes(columnName);
+    }
+
+    // 格式化时间：20251118174157 -> x月x日 xx:xx 或 xx年x月x日 xx:xx
+    function formatTime(timeStr: string): string {
+        if (!timeStr || timeStr.length !== 14) return timeStr;
+
+        try {
+            // 解析时间字符串 YYYYMMDDHHmmss
+            const year = parseInt(timeStr.substring(0, 4));
+            const month = timeStr.substring(4, 6); // 保留前导零
+            const day = timeStr.substring(6, 8);   // 保留前导零
+            const hour = timeStr.substring(8, 10);
+            const minute = timeStr.substring(10, 12);
+
+            const currentYear = new Date().getFullYear();
+
+            // 如果是今年，只显示月日时分
+            if (year === currentYear) {
+                return `${month}月${day}日 ${hour}:${minute}`;
+            } else {
+                // 不是今年，显示年月日时分
+                return `${year}年${month}月${day}日 ${hour}:${minute}`;
+            }
+        } catch (e) {
+            console.error('Failed to format time:', timeStr, e);
+            return timeStr;
+        }
     }
 
     // 打开设置对话框
@@ -159,54 +184,21 @@
         <div class="header-actions">
             <button
                 class="header-btn"
+                on:click={executeQuery}
+                disabled={loading}
+                title="刷新"
+            >
+                <svg class:rotating={loading}><use xlink:href="#iconRefresh"></use></svg>
+            </button>
+            <button
+                class="header-btn"
                 on:click={openSettings}
                 title="设置"
             >
                 <svg><use xlink:href="#iconSettings"></use></svg>
             </button>
-            <button
-                class="header-btn toggle-input-btn"
-                on:click={toggleInput}
-                title={isInputCollapsed ? "展开输入区域" : "折叠输入区域"}
-            >
-                <svg class:collapsed={isInputCollapsed}>
-                    <use xlink:href="#iconDown"></use>
-                </svg>
-            </button>
         </div>
     </div>
-
-    {#if !isInputCollapsed}
-        <div class="sql-input-area" class:compact={isCompact}>
-            <textarea
-                bind:value={sqlQuery}
-                on:keydown={handleKeydown}
-                placeholder="输入SQL查询，按 Ctrl+Enter 执行"
-                rows={isCompact ? 2 : 3}
-            />
-            <button class="b3-button b3-button--outline execute-btn" on:click={executeQuery} disabled={loading}>
-                {#if loading}
-                    <svg class="rotating"><use xlink:href="#iconRefresh"></use></svg>
-                    执行中
-                {:else}
-                    <svg><use xlink:href="#iconPlay"></use></svg>
-                    执行
-                {/if}
-            </button>
-        </div>
-    {:else}
-        <div class="collapsed-input">
-            <button class="b3-button b3-button--outline execute-btn-compact" on:click={executeQuery} disabled={loading}>
-                {#if loading}
-                    <svg class="rotating"><use xlink:href="#iconRefresh"></use></svg>
-                    执行中
-                {:else}
-                    <svg><use xlink:href="#iconPlay"></use></svg>
-                    执行当前查询
-                {/if}
-            </button>
-        </div>
-    {/if}
 
     {#if error}
         <div class="error-message">
@@ -217,10 +209,6 @@
 
     {#if results.length > 0}
         <div class="results-area">
-            <div class="results-info">
-                <svg><use xlink:href="#iconTable"></use></svg>
-                <span>{results.length} 条记录</span>
-            </div>
             <div class="table-wrapper">
                 <table class="results-table">
                     <thead>
@@ -245,6 +233,8 @@
                                             >
                                                 {row[column] ?? ''}
                                             </a>
+                                        {:else if shouldRenderAsTime(column)}
+                                            {formatTime(row[column])}
                                         {:else}
                                             {row[column] ?? ''}
                                         {/if}
@@ -255,8 +245,11 @@
                     </tbody>
                 </table>
             </div>
-            {#if totalPages > 1}
-                <div class="pagination">
+            <div class="pagination">
+                <span class="pagination-info">
+                    共 {results.length} 条记录
+                </span>
+                {#if totalPages > 1}
                     <button
                         class="b3-button b3-button--outline pagination-btn"
                         disabled={currentPage === 0}
@@ -288,8 +281,8 @@
                     >
                         <svg><use xlink:href="#iconForward"></use></svg>
                     </button>
-                </div>
-            {/if}
+                {/if}
+            </div>
         </div>
     {:else if !loading && !error}
         <div class="empty-state">
@@ -355,79 +348,6 @@
                 width: 16px;
                 height: 16px;
                 color: var(--b3-theme-on-surface);
-                transition: transform 0.2s;
-
-                &.collapsed {
-                    transform: rotate(-90deg);
-                }
-            }
-        }
-    }
-
-    .sql-input-area {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        flex-shrink: 0;
-
-        &.compact {
-            gap: 6px;
-        }
-
-        textarea {
-            width: 100%;
-            padding: 8px;
-            border: 1px solid var(--b3-border-color);
-            border-radius: 4px;
-            background: var(--b3-theme-background);
-            color: var(--b3-theme-on-background);
-            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-            font-size: 12px;
-            resize: none;
-            transition: border-color 0.2s;
-            box-sizing: border-box;
-
-            &:focus {
-                outline: none;
-                border-color: var(--b3-theme-primary);
-            }
-        }
-
-        .execute-btn {
-            align-self: flex-end;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 6px 12px;
-            font-size: 13px;
-
-            svg {
-                width: 14px;
-                height: 14px;
-            }
-
-            &:disabled {
-                opacity: 0.6;
-                cursor: not-allowed;
-            }
-        }
-    }
-
-    .collapsed-input {
-        display: flex;
-        gap: 8px;
-        flex-shrink: 0;
-
-        .execute-btn-compact {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 6px 12px;
-            font-size: 13px;
-
-            svg {
-                width: 14px;
-                height: 14px;
             }
 
             &:disabled {
@@ -468,22 +388,6 @@
         gap: 8px;
         flex: 1;
         min-height: 0;
-
-        .results-info {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 12px;
-            font-weight: 500;
-            color: var(--b3-theme-on-surface);
-            flex-shrink: 0;
-
-            svg {
-                width: 14px;
-                height: 14px;
-                color: var(--b3-theme-primary);
-            }
-        }
 
         .table-wrapper {
             flex: 1;
