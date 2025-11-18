@@ -244,6 +244,11 @@
         }
     }
 
+    // 暴露刷新方法
+    export function refresh() {
+        loadTasks();
+    }
+
     // 更新筛选后的任务
     function updateFilteredTasks() {
         let tasks = applyFilter(allTasks, config.filter);

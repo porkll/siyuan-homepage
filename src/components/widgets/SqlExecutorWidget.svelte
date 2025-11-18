@@ -93,6 +93,10 @@
         }
     }
 
+    // 暴露刷新方法
+    export function refresh() {
+        executeQuery();
+    }
 
     // 格式化链接
     function formatLink(template: string, value: any): string {

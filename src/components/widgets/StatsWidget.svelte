@@ -16,7 +16,8 @@
     // 根据空间大小调整网格列数
     $: gridColumns = colSpan >= 6 ? 3 : colSpan >= 4 ? 2 : 1;
 
-    onMount(async () => {
+    // 加载统计数据
+    function loadStats() {
         // 获取笔记本数量
         fetchPost("/api/notebook/lsNotebooks", {}, (response) => {
             if (response && response.data && response.data.notebooks) {
@@ -41,6 +42,15 @@
                 stats.blocks = response.data[0].count || 0;
             }
         });
+    }
+
+    // 暴露刷新方法
+    export function refresh() {
+        loadStats();
+    }
+
+    onMount(() => {
+        loadStats();
     });
 </script>
 

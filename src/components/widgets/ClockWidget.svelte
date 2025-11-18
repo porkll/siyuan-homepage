@@ -35,6 +35,11 @@
         if (timer) clearInterval(timer);
     });
 
+    // 暴露刷新方法（时钟会自动更新，这里只是为了接口一致性）
+    export function refresh() {
+        updateTime();
+    }
+
     // 根据分配的空间决定布局模式
     // 如果宽度足够且高度较小（1行×12列），使用横向布局
     $: isHorizontal = colSpan >= 8 && rowSpan === 1;

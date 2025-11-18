@@ -240,7 +240,19 @@
 
     let showConfigPanel = false;
 
+    // 组件实例引用，用于调用刷新方法
+    let widgetRefs = [];
+
     $: enabledWidgets = widgets.filter(w => w.enabled && w.component);
+
+    // 刷新所有组件
+    function refreshAllWidgets() {
+        widgetRefs.forEach(ref => {
+            if (ref && typeof ref.refresh === 'function') {
+                ref.refresh();
+            }
+        });
+    }
 
     // 计算动态行高（固定行数）
     function calculateLayout(height: number) {
@@ -269,6 +281,24 @@
 </script>
 
 <div class="homepage-container" bind:this={containerElement}>
+    <!-- 全局操作按钮 -->
+    <div class="global-actions-wrapper">
+        <button
+            on:click={refreshAllWidgets}
+            title="刷新所有组件"
+            style="width: 28px; height: 28px; border: none; background: var(--b3-theme-background); border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; box-shadow: 0 2px 6px rgba(0,0,0,0.15); transition: all 0.2s;"
+        >
+            <svg style="width: 16px; height: 16px;"><use xlink:href="#iconRefresh"></use></svg>
+        </button>
+        <button
+            on:click={() => showConfigPanel = true}
+            title="设置"
+            style="width: 28px; height: 28px; border: none; background: var(--b3-theme-background); border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; box-shadow: 0 2px 6px rgba(0,0,0,0.15); transition: all 0.2s;"
+        >
+            <svg style="width: 16px; height: 16px;"><use xlink:href="#iconSettings"></use></svg>
+        </button>
+    </div>
+
     <div class="widgets-grid" style="--row-height: {calculatedRowHeight}px;">
         {#if enabledWidgets.length === 0}
             <!-- 空状态：显示添加组件占位符 -->
@@ -277,7 +307,7 @@
                 <span>添加组件</span>
             </div>
         {:else}
-            {#each enabledWidgets as widget}
+            {#each enabledWidgets as widget, index}
                 <div
                     class="widget-wrapper"
                     style="grid-column: span {widget.colSpan}; grid-row: span {widget.rowSpan};"
@@ -294,6 +324,7 @@
                     </div>
                     <svelte:component
                         this={widget.component}
+                        bind:this={widgetRefs[index]}
                         colSpan={widget.colSpan}
                         rowSpan={widget.rowSpan}
                         config={widget.config}
@@ -378,6 +409,22 @@
         display: flex;
         flex-direction: column;
         box-sizing: border-box;
+
+        &:hover .global-actions-wrapper {
+            opacity: 1;
+        }
+    }
+
+    .global-actions-wrapper {
+        position: absolute;
+        top: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 100;
+        display: flex;
+        gap: 8px;
+        opacity: 0;
+        transition: opacity 0.3s ease;
     }
 
     .widgets-grid {
