@@ -13,7 +13,7 @@
     export let app; // Used for future features
     export let plugin; // 插件实例，用于保存配置
 
-    const STORAGE_KEY = 'homepage-widgets-config';
+    const SCREENS_STORAGE_KEY = 'homepage-screens-config'; // 多屏幕配置
 
     // 布局常量
     const FIXED_ROWS = 8; // 固定行数
@@ -24,6 +24,16 @@
     let containerElement: HTMLElement;
     let calculatedRowHeight = 120; // 动态计算的行高
     let lastHeight = 0; // 上次的高度，用于检测变化
+
+    // 多屏幕状态
+    interface Screen {
+        id: number;
+        name: string;
+        widgets: WidgetInstance[];
+    }
+
+    let currentScreenIndex = 0; // 当前屏幕索引
+    let screens: Screen[] = []; // 所有屏幕
 
     // 组件注册表 - 定义所有可用的组件类型
     const WIDGET_REGISTRY = {
@@ -128,19 +138,24 @@
     onMount(async () => {
         if (!plugin) return;
 
-        let savedConfig = await plugin.loadData(STORAGE_KEY);
+        // 加载多屏幕配置
+        let savedScreensConfig = await plugin.loadData(SCREENS_STORAGE_KEY);
 
-        // 没有配置文件，生成默认的
-        if (!savedConfig) {
-            savedConfig = defaultWidgets;
-            await plugin.saveData(STORAGE_KEY, savedConfig);
+        if (!savedScreensConfig) {
+            // 创建默认屏幕
+            screens = [{
+                id: 1,
+                name: '屏幕 1',
+                widgets: defaultWidgets
+            }];
+            await saveScreensConfig();
+        } else {
+            screens = savedScreensConfig.screens || [];
+            currentScreenIndex = savedScreensConfig.currentScreenIndex || 0;
         }
 
-        // 从配置重建组件实例
-        widgets = savedConfig.map(w => ({
-            ...w,
-            component: WIDGET_REGISTRY[w.type]?.component
-        }));
+        // 加载当前屏幕的组件
+        loadCurrentScreen();
 
         // 初始化布局计算 - 等待 DOM 更新完成
         await tick();
@@ -169,15 +184,99 @@
         };
     });
 
-    // 保存配置到存储
+    // 保存配置到存储（保存当前屏幕的配置）
     async function saveConfig() {
-        if (!plugin) return;
+        if (!plugin || !screens[currentScreenIndex]) return;
 
-        // 只保存配置数据，不保存组件实例
-        const configToSave = widgets.map(({ id, type, colSpan, rowSpan, enabled, config }) => ({
+        // 保存当前屏幕的组件配置
+        screens[currentScreenIndex].widgets = widgets.map(({ id, type, colSpan, rowSpan, enabled, config }) => ({
             id, type, colSpan, rowSpan, enabled, config
         }));
-        await plugin.saveData(STORAGE_KEY, configToSave);
+
+        // 保存到存储
+        await saveScreensConfig();
+    }
+
+    // 保存所有屏幕配置
+    async function saveScreensConfig() {
+        if (!plugin) return;
+
+        const configToSave = {
+            currentScreenIndex,
+            screens: screens.map(screen => ({
+                id: screen.id,
+                name: screen.name,
+                widgets: screen.widgets.map(({ id, type, colSpan, rowSpan, enabled, config }) => ({
+                    id, type, colSpan, rowSpan, enabled, config
+                }))
+            }))
+        };
+
+        await plugin.saveData(SCREENS_STORAGE_KEY, configToSave);
+    }
+
+    // 加载当前屏幕的组件
+    function loadCurrentScreen() {
+        if (!screens[currentScreenIndex]) return;
+
+        widgets = screens[currentScreenIndex].widgets.map(w => ({
+            ...w,
+            component: WIDGET_REGISTRY[w.type]?.component
+        }));
+    }
+
+    // 切换到指定屏幕
+    async function switchToScreen(index: number) {
+        if (index < 0 || index >= screens.length) return;
+
+        // 保存当前屏幕的配置
+        if (screens[currentScreenIndex]) {
+            screens[currentScreenIndex].widgets = widgets.map(({ id, type, colSpan, rowSpan, enabled, config }) => ({
+                id, type, colSpan, rowSpan, enabled, config
+            }));
+        }
+
+        // 切换屏幕
+        currentScreenIndex = index;
+        loadCurrentScreen();
+
+        // 保存配置
+        await saveScreensConfig();
+    }
+
+    // 新增屏幕
+    async function addScreen() {
+        const newId = Math.max(...screens.map(s => s.id), 0) + 1;
+        const newScreen: Screen = {
+            id: newId,
+            name: `屏幕 ${newId}`,
+            widgets: [...defaultWidgets]
+        };
+
+        screens = [...screens, newScreen];
+        await switchToScreen(screens.length - 1);
+    }
+
+    // 删除屏幕
+    async function removeScreen(index: number) {
+        // 至少保留一个屏幕
+        if (screens.length <= 1) {
+            return;
+        }
+
+        // 调整当前屏幕索引
+        if (index === currentScreenIndex) {
+            // 删除的是当前屏幕，切换到前一个或后一个
+            currentScreenIndex = index > 0 ? index - 1 : 0;
+        } else if (index < currentScreenIndex) {
+            // 删除的屏幕在当前屏幕之前，索引需要-1
+            currentScreenIndex--;
+        }
+        // 如果删除的屏幕在当前屏幕之后，索引不变
+
+        screens = screens.filter((_, i) => i !== index);
+        loadCurrentScreen();
+        await saveScreensConfig();
     }
 
     // 右键菜单处理
@@ -281,19 +380,62 @@
 </script>
 
 <div class="homepage-container" bind:this={containerElement}>
+    <!-- 顶部触发区域 -->
+    <div class="top-trigger-area"></div>
+
     <!-- 全局操作按钮 -->
     <div class="global-actions-wrapper">
+        <!-- 屏幕切换按钮 -->
+        <div class="screen-switcher">
+            {#each screens as screen, index}
+                <button
+                    class="screen-btn"
+                    class:active={index === currentScreenIndex}
+                    on:click={() => switchToScreen(index)}
+                    title="屏幕 {index + 1}"
+                >
+                    {index + 1}
+                </button>
+            {/each}
+
+            <!-- 添加屏幕按钮 -->
+            <button
+                class="screen-action-btn"
+                on:click={addScreen}
+                title="新增屏幕"
+            >
+                +
+            </button>
+
+            <!-- 删除当前屏幕按钮 -->
+            {#if screens.length > 1}
+                <button
+                    class="screen-action-btn danger"
+                    on:click={() => removeScreen(currentScreenIndex)}
+                    title="删除当前屏幕"
+                >
+                    -
+                </button>
+            {/if}
+        </div>
+
+        <!-- 分隔线 -->
+        <div class="toolbar-separator"></div>
+
+        <!-- 刷新按钮 -->
         <button
+            class="toolbar-btn"
             on:click={refreshAllWidgets}
             title="刷新所有组件"
-            style="width: 28px; height: 28px; border: none; background: var(--b3-theme-background); border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; box-shadow: 0 2px 6px rgba(0,0,0,0.15); transition: all 0.2s;"
         >
             <svg style="width: 16px; height: 16px;"><use xlink:href="#iconRefresh"></use></svg>
         </button>
+
+        <!-- 设置按钮 -->
         <button
+            class="toolbar-btn"
             on:click={() => showConfigPanel = true}
             title="设置"
-            style="width: 28px; height: 28px; border: none; background: var(--b3-theme-background); border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; box-shadow: 0 2px 6px rgba(0,0,0,0.15); transition: all 0.2s;"
         >
             <svg style="width: 16px; height: 16px;"><use xlink:href="#iconSettings"></use></svg>
         </button>
@@ -409,8 +551,18 @@
         display: flex;
         flex-direction: column;
         box-sizing: border-box;
+    }
 
-        &:hover .global-actions-wrapper {
+    .top-trigger-area {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 100px;
+        z-index: 99;
+
+        &:hover ~ .global-actions-wrapper,
+        ~ .global-actions-wrapper:hover {
             opacity: 1;
         }
     }
@@ -422,9 +574,105 @@
         transform: translateX(-50%);
         z-index: 100;
         display: flex;
-        gap: 8px;
+        align-items: center;
+        gap: 12px;
         opacity: 0;
         transition: opacity 0.3s ease;
+        background: var(--b3-theme-background);
+        padding: 6px 10px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+    }
+
+    .screen-switcher {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .screen-btn {
+        width: 28px;
+        height: 28px;
+        border: 1px solid var(--b3-border-color);
+        background: var(--b3-theme-surface);
+        border-radius: 6px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--b3-theme-on-surface);
+        transition: all 0.2s;
+
+        &:hover {
+            background: var(--b3-list-hover);
+            border-color: var(--b3-theme-primary);
+        }
+
+        &.active {
+            background: var(--b3-theme-primary);
+            color: var(--b3-theme-on-primary);
+            border-color: var(--b3-theme-primary);
+        }
+    }
+
+    .screen-action-btn {
+        width: 28px;
+        height: 28px;
+        border: 1px solid var(--b3-border-color);
+        background: var(--b3-theme-surface);
+        border-radius: 6px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--b3-theme-on-surface);
+        transition: all 0.2s;
+
+        &:hover {
+            background: var(--b3-list-hover);
+            border-color: var(--b3-theme-primary);
+            transform: scale(1.05);
+        }
+
+        &.danger {
+            color: var(--b3-theme-error);
+
+            &:hover {
+                background: var(--b3-theme-error);
+                color: white;
+                border-color: var(--b3-theme-error);
+            }
+        }
+    }
+
+    .toolbar-separator {
+        width: 1px;
+        height: 20px;
+        background: var(--b3-border-color);
+    }
+
+    .toolbar-btn {
+        width: 28px;
+        height: 28px;
+        border: none;
+        background: transparent;
+        border-radius: 6px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        transition: all 0.2s;
+
+        &:hover {
+            background: var(--b3-list-hover);
+        }
     }
 
     .widgets-grid {
