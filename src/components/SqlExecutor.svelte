@@ -60,7 +60,7 @@
             bind:value={sqlQuery}
             on:keydown={handleKeydown}
             placeholder="输入SQL查询语句，例如: SELECT * FROM blocks WHERE type='d' LIMIT 10"
-            rows="5"
+            rows="3"
         />
         <button class="b3-button b3-button--outline" on:click={executeQuery} disabled={loading}>
             {#if loading}
@@ -121,8 +121,8 @@
     .sql-executor {
         display: flex;
         flex-direction: column;
-        gap: 20px;
-        padding: 20px;
+        gap: 12px;
+        padding: 16px;
         background: var(--b3-theme-surface);
         border-radius: 8px;
         height: 100%;
@@ -132,7 +132,7 @@
     .sql-input-section {
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 8px;
 
         .input-header {
             display: flex;
@@ -141,24 +141,26 @@
 
             label {
                 font-weight: 600;
+                font-size: 13px;
                 color: var(--b3-theme-on-surface);
             }
 
             .hint {
-                font-size: 12px;
+                font-size: 11px;
                 color: var(--b3-theme-on-surface-light);
             }
         }
 
         textarea {
             width: 100%;
-            padding: 12px;
+            padding: 8px 10px;
             border: 1px solid var(--b3-border-color);
             border-radius: 4px;
             background: var(--b3-theme-background);
             color: var(--b3-theme-on-background);
             font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-            font-size: 14px;
+            font-size: 13px;
+            line-height: 1.5;
             resize: vertical;
             transition: border-color 0.2s;
 

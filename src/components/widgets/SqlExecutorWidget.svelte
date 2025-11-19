@@ -300,7 +300,7 @@
     .sql-executor-widget {
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 8px;
         height: 100%;
         overflow: hidden;
     }
@@ -308,20 +308,20 @@
     .widget-header {
         display: flex;
         align-items: center;
-        gap: 8px;
-        padding-bottom: 12px;
+        gap: 6px;
+        padding-bottom: 8px;
         border-bottom: 2px solid var(--b3-theme-primary);
         flex-shrink: 0;
 
         .widget-icon {
-            width: 20px;
-            height: 20px;
+            width: 16px;
+            height: 16px;
             color: var(--b3-theme-primary);
         }
 
         h3 {
             margin: 0;
-            font-size: 16px;
+            font-size: 14px;
             font-weight: 600;
             color: var(--b3-theme-on-surface);
             flex: 1;
@@ -334,7 +334,7 @@
         }
 
         .header-btn {
-            padding: 4px;
+            padding: 3px;
             background: transparent;
             border: none;
             cursor: pointer;
@@ -349,8 +349,8 @@
             }
 
             svg {
-                width: 16px;
-                height: 16px;
+                width: 14px;
+                height: 14px;
                 color: var(--b3-theme-on-surface);
             }
 
