@@ -556,10 +556,13 @@
     .top-trigger-area {
         position: absolute;
         top: 0;
-        left: 0;
-        right: 0;
-        height: 100px;
+        left: 50%;
+        transform: translateX(-50%);
+        height: 60px;
+        width: auto;
+        min-width: 200px;
         z-index: 99;
+        pointer-events: none;
 
         &:hover ~ .global-actions-wrapper,
         ~ .global-actions-wrapper:hover {
@@ -582,6 +585,7 @@
         padding: 6px 10px;
         border-radius: 8px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+        pointer-events: auto;
     }
 
     .screen-switcher {
