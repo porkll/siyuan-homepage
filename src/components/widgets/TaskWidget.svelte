@@ -34,8 +34,10 @@
 
     export let app; // App 实例，用于打开文档
     export let plugin; // 插件实例，用于保存配置
+    export let widgetId: string = ''; // 组件实例 ID，用于区分多个实例
 
-    const STORAGE_KEY = 'task-widget-config';
+    // 使用组件 ID 作为 storage key，确保每个实例独立存储
+    $: STORAGE_KEY = widgetId ? `task-widget-config-${widgetId}` : 'task-widget-config';
 
     // 默认看板列配置
     const DEFAULT_KANBAN_COLUMNS: KanbanColumn[] = [
@@ -193,11 +195,14 @@
     }
 
     // 加载任务设置
+    // 任务设置存储 key（使用 widgetId 区分不同实例）
+    $: TASK_SETTINGS_KEY = widgetId ? `task-settings-${widgetId}` : 'task-settings';
+
     async function loadTaskSettings() {
         if (!plugin) return;
 
         try {
-            const savedSettings = await plugin.loadData('task-settings');
+            const savedSettings = await plugin.loadData(TASK_SETTINGS_KEY);
             if (savedSettings) {
                 taskSettings = { ...taskSettings, ...savedSettings };
             }
@@ -211,7 +216,7 @@
         if (!plugin) return;
 
         try {
-            await plugin.saveData('task-settings', taskSettings);
+            await plugin.saveData(TASK_SETTINGS_KEY, taskSettings);
         } catch (err) {
             console.error('Failed to save task settings:', err);
         }

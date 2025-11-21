@@ -9,6 +9,7 @@
     import TaskWidget from "./components/widgets/TaskWidget.svelte";
     import SqlExecutorWidget from "./components/widgets/SqlExecutorWidget.svelte";
     import WidgetConfigPanel from "./components/WidgetConfigPanel.svelte";
+    import { generateUUID, deepClone } from '@/libs/utils';
 
     export let app; // Used for future features
     export let plugin; // 插件实例，用于保存配置
@@ -91,35 +92,37 @@
         component?: any;      // 运行时组件引用
     }
 
-    // 默认组件实例（首次加载）
-    const defaultWidgets: WidgetInstance[] = [
-        {
-            id: 'clock-1',
-            type: 'clock',
-            colSpan: 6,
-            rowSpan: 2,
-            enabled: true,
-            config: { showSeconds: true, format24h: true }
-        },
-        {
-            id: 'stats-1',
-            type: 'stats',
-            colSpan: 6,
-            rowSpan: 2,
-            enabled: true,
-            config: {}
-        },
-        {
-            id: 'task-1',
-            type: 'task',
-            colSpan: 12,
-            rowSpan: 4,
-            enabled: true,
-            config: {}
-        }
-    ];
+    // 创建默认组件实例（每次调用生成新的 UUID）
+    function createDefaultWidgets(): WidgetInstance[] {
+        return [
+            {
+                id: `clock-${generateUUID()}`,
+                type: 'clock',
+                colSpan: 6,
+                rowSpan: 2,
+                enabled: true,
+                config: { showSeconds: true, format24h: true }
+            },
+            {
+                id: `stats-${generateUUID()}`,
+                type: 'stats',
+                colSpan: 6,
+                rowSpan: 2,
+                enabled: true,
+                config: {}
+            },
+            {
+                id: `task-${generateUUID()}`,
+                type: 'task',
+                colSpan: 12,
+                rowSpan: 4,
+                enabled: true,
+                config: {}
+            }
+        ];
+    }
 
-    let widgets = [...defaultWidgets];
+    let widgets = createDefaultWidgets();
     let contextMenu: {
         show: boolean;
         x: number;
@@ -146,7 +149,7 @@
             screens = [{
                 id: 1,
                 name: '屏幕 1',
-                widgets: defaultWidgets
+                widgets: createDefaultWidgets() // 每次创建新的组件实例（含独立 UUID）
             }];
             await saveScreensConfig();
         } else {
@@ -188,9 +191,10 @@
     async function saveConfig() {
         if (!plugin || !screens[currentScreenIndex]) return;
 
-        // 保存当前屏幕的组件配置
+        // 保存当前屏幕的组件配置（深拷贝防止配置共享）
         screens[currentScreenIndex].widgets = widgets.map(({ id, type, colSpan, rowSpan, enabled, config }) => ({
-            id, type, colSpan, rowSpan, enabled, config
+            id, type, colSpan, rowSpan, enabled,
+            config: deepClone(config)
         }));
 
         // 保存到存储
@@ -207,7 +211,8 @@
                 id: screen.id,
                 name: screen.name,
                 widgets: screen.widgets.map(({ id, type, colSpan, rowSpan, enabled, config }) => ({
-                    id, type, colSpan, rowSpan, enabled, config
+                    id, type, colSpan, rowSpan, enabled,
+                    config: deepClone(config) // 深拷贝防止配置共享
                 }))
             }))
         };
@@ -219,8 +224,10 @@
     function loadCurrentScreen() {
         if (!screens[currentScreenIndex]) return;
 
+        // 深拷贝组件配置，防止不同屏幕之间的配置共享
         widgets = screens[currentScreenIndex].widgets.map(w => ({
             ...w,
+            config: deepClone(w.config),
             component: WIDGET_REGISTRY[w.type]?.component
         }));
     }
@@ -229,10 +236,11 @@
     async function switchToScreen(index: number) {
         if (index < 0 || index >= screens.length) return;
 
-        // 保存当前屏幕的配置
+        // 保存当前屏幕的配置（深拷贝防止配置共享）
         if (screens[currentScreenIndex]) {
             screens[currentScreenIndex].widgets = widgets.map(({ id, type, colSpan, rowSpan, enabled, config }) => ({
-                id, type, colSpan, rowSpan, enabled, config
+                id, type, colSpan, rowSpan, enabled,
+                config: deepClone(config)
             }));
         }
 
@@ -250,7 +258,7 @@
         const newScreen: Screen = {
             id: newId,
             name: `屏幕 ${newId}`,
-            widgets: [...defaultWidgets]
+            widgets: createDefaultWidgets() // 每次创建新的组件实例（含独立 UUID）
         };
 
         screens = [...screens, newScreen];
@@ -449,29 +457,22 @@
                 <span>添加组件</span>
             </div>
         {:else}
-            {#each enabledWidgets as widget, index}
+            {#each enabledWidgets as widget, index (widget.id)}
                 <div
                     class="widget-wrapper"
                     style="grid-column: span {widget.colSpan}; grid-row: span {widget.rowSpan};"
                     on:contextmenu={(e) => handleWidgetContextMenu(e, widget)}
                 >
-                    <div class="widget-header-actions">
-                        <button
-                            class="widget-action-btn"
-                            on:click={(e) => handleWidgetContextMenu(e, widget)}
-                            title="配置"
-                        >
-                            <svg><use xlink:href="#iconMore"></use></svg>
-                        </button>
-                    </div>
                     <svelte:component
                         this={widget.component}
                         bind:this={widgetRefs[index]}
+                        widgetId={widget.id}
                         colSpan={widget.colSpan}
                         rowSpan={widget.rowSpan}
                         config={widget.config}
                         onConfigChange={(newConfig) => {
-                            widget.config = newConfig;
+                            // 深拷贝防止配置共享
+                            widget.config = deepClone(newConfig);
                             widgets = [...widgets];
                             saveConfig();
                         }}
@@ -733,46 +734,6 @@
     .widget-wrapper {
         position: relative;
         transition: all 0.3s;
-
-        &:hover {
-            .widget-header-actions {
-                opacity: 1;
-            }
-        }
-    }
-
-    .widget-header-actions {
-        position: absolute;
-        top: 8px;
-        right: 8px;
-        z-index: 10;
-        opacity: 0;
-        transition: opacity 0.2s;
-
-        .widget-action-btn {
-            width: 24px;
-            height: 24px;
-            border: none;
-            background: var(--b3-theme-background);
-            border-radius: 6px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s;
-            padding: 0;
-
-            &:hover {
-                background: var(--b3-list-hover);
-                transform: scale(1.1);
-            }
-
-            svg {
-                width: 14px;
-                height: 14px;
-                color: var(--b3-theme-on-surface);
-            }
-        }
     }
 
     // 全局样式，应用于所有组件

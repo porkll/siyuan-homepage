@@ -3,6 +3,7 @@
 -->
 <script lang="ts">
     import { createEventDispatcher } from 'svelte';
+    import { generateUUID, deepClone } from '@/libs/utils';
 
     export let widgets = [];
     export let WIDGET_REGISTRY;
@@ -34,10 +35,9 @@
         dispatch('update', { widgets });
     }
 
-    // 生成唯一ID
+    // 生成唯一ID（使用 UUID）
     function generateId(type: string): string {
-        const existingIds = widgets.filter(w => w.type === type).length;
-        return `${type}-${existingIds + 1}`;
+        return `${type}-${generateUUID()}`;
     }
 
     // 添加新组件
@@ -51,7 +51,7 @@
             colSpan: widgetDef.defaultLayout.colSpan,
             rowSpan: widgetDef.defaultLayout.rowSpan,
             enabled: true,
-            config: { ...widgetDef.defaultConfig },
+            config: deepClone(widgetDef.defaultConfig), // 深拷贝防止配置共享
             component: widgetDef.component
         };
 

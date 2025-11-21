@@ -6,6 +6,8 @@
     import { sql } from "@/api";
     import { svelteDialog } from "@/libs/dialog";
     import SqlExecutorSettings from "./sql/SqlExecutorSettings.svelte";
+    import { RefreshCw, Settings, Database } from 'lucide-svelte';
+    import { deepClone } from '@/libs/utils';
 
     export let colSpan: number = 6;
     export let rowSpan: number = 4;
@@ -160,8 +162,11 @@
 
                 instance.$on('save', (event) => {
                     const newConfig = event.detail;
-                    // 更新配置
-                    config = { ...config, ...newConfig };
+                    // 更新配置（使用深拷贝防止配置共享）
+                    config = {
+                        ...deepClone(config),
+                        ...deepClone(newConfig)
+                    };
                     // 更新 SQL 查询
                     sqlQuery = newConfig.defaultSql || sqlQuery;
                     // 通知父组件配置已更改
@@ -183,23 +188,27 @@
 
 <div class="widget sql-executor-widget">
     <div class="widget-header">
-        <svg class="widget-icon"><use xlink:href="#iconSQL"></use></svg>
-        <h3>SQL 执行器</h3>
-        <div class="header-actions">
+        <div class="title-section">
+            <h3 class="widget-title">
+                <svg class="widget-icon"><use xlink:href="#iconSQL"></use></svg>
+                SQL 执行器
+            </h3>
+        </div>
+        <div class="actions">
             <button
-                class="header-btn"
+                class="icon-btn"
                 on:click={executeQuery}
                 disabled={loading}
                 title="刷新"
             >
-                <svg class:rotating={loading}><use xlink:href="#iconRefresh"></use></svg>
+                <RefreshCw size={14} class={loading ? 'rotating' : ''} />
             </button>
             <button
-                class="header-btn"
+                class="icon-btn"
                 on:click={openSettings}
                 title="设置"
             >
-                <svg><use xlink:href="#iconSettings"></use></svg>
+                <Settings size={14} />
             </button>
         </div>
     </div>
@@ -290,7 +299,7 @@
         </div>
     {:else if !loading && !error}
         <div class="empty-state">
-            <svg><use xlink:href="#iconDatabase"></use></svg>
+            <Database size={40} />
             <p>输入 SQL 查询并执行</p>
         </div>
     {/if}
@@ -300,64 +309,75 @@
     .sql-executor-widget {
         display: flex;
         flex-direction: column;
-        gap: 8px;
         height: 100%;
         overflow: hidden;
+        background: var(--b3-theme-background);
+        border-radius: 8px;
     }
 
     .widget-header {
+        padding: 6px 10px;
+        border-bottom: 1px solid var(--b3-border-color);
+        background: var(--b3-theme-surface);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+    }
+
+    .title-section {
         display: flex;
         align-items: center;
         gap: 6px;
-        padding-bottom: 8px;
-        border-bottom: 2px solid var(--b3-theme-primary);
-        flex-shrink: 0;
+    }
+
+    .widget-title {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--b3-theme-on-surface);
+        display: flex;
+        align-items: center;
+        gap: 4px;
 
         .widget-icon {
             width: 16px;
             height: 16px;
-            color: var(--b3-theme-primary);
+            vertical-align: -2px;
+        }
+    }
+
+    .actions {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+    }
+
+    .icon-btn {
+        padding: 3px 6px;
+        border: 1px solid var(--b3-border-color);
+        background: var(--b3-theme-background);
+        cursor: pointer;
+        border-radius: 4px;
+        font-size: 13px;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--b3-theme-on-surface);
+
+        &:hover {
+            background: var(--b3-theme-surface);
         }
 
-        h3 {
-            margin: 0;
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--b3-theme-on-surface);
-            flex: 1;
+        &:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
         }
 
-        .header-actions {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-
-        .header-btn {
-            padding: 3px;
-            background: transparent;
-            border: none;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 4px;
-            transition: all 0.2s;
-
-            &:hover {
-                background: var(--b3-list-hover);
-            }
-
-            svg {
-                width: 14px;
-                height: 14px;
-                color: var(--b3-theme-on-surface);
-            }
-
-            &:disabled {
-                opacity: 0.6;
-                cursor: not-allowed;
-            }
+        :global(.rotating) {
+            animation: rotate 1s linear infinite;
         }
     }
 
@@ -516,21 +536,12 @@
         justify-content: center;
         gap: 12px;
         color: var(--b3-theme-on-surface-light);
-
-        svg {
-            width: 40px;
-            height: 40px;
-            opacity: 0.5;
-        }
+        opacity: 0.5;
 
         p {
             margin: 0;
             font-size: 13px;
         }
-    }
-
-    .rotating {
-        animation: rotate 1s linear infinite;
     }
 
     @keyframes rotate {
