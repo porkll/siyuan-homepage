@@ -322,6 +322,14 @@
         const { task, toStatus } = event.detail;
 
         try {
+            // === 步骤1: 立即更新本地任务状态（乐观更新） ===
+            const updatedTask = updateTaskLocalState(task, toStatus);
+
+            // 更新 allTasks 和 filteredTasks，触发 Svelte 响应式更新
+            allTasks = allTasks.map(t => t.id === task.id ? updatedTask : t);
+            filteredTasks = filteredTasks.map(t => t.id === task.id ? updatedTask : t);
+
+            // === 步骤2: 异步更新后端，不阻塞 UI ===
             // 判断是否需要更新 markdown（仅 todo/done 需要）
             let needUpdateMarkdown = false;
             let newMarkdown = task.markdown;
@@ -378,22 +386,76 @@
                             data: newMarkdown
                         }, (updateResponse) => {
                             if (updateResponse && updateResponse.code === 0) {
-                                loadTasks();
+                                // ✅ 不调用 loadTasks()，避免刷新组件
+                                console.log('Task updated successfully:', task.id);
                             } else {
                                 console.error('Failed to update block:', updateResponse);
+                                // 如果更新失败，可以选择回滚或提示用户
+                                showError('更新任务失败');
                             }
                         });
                     } else {
-                        // 不需要更新 markdown，直接重新加载
-                        loadTasks();
+                        // ✅ 不调用 loadTasks()，避免刷新组件
+                        console.log('Task attrs updated successfully:', task.id);
                     }
                 } else {
                     console.error('Failed to set attrs:', attrResponse);
+                    // 如果更新失败，可以选择回滚或提示用户
+                    showError('更新任务属性失败');
                 }
             });
         } catch (err) {
             console.error('Failed to move task:', err);
+            showError('移动任务失败');
         }
+    }
+
+    // 辅助函数：更新任务的本地状态（用于乐观更新）
+    function updateTaskLocalState(task: Task, toStatus: string): Task {
+        // 使用 JSON 深度复制，避免引用问题
+        const updatedTask: Task = JSON.parse(JSON.stringify(task));
+
+        // 恢复 Date 对象（JSON.stringify 会将 Date 转为字符串）
+        if (task.createdAt) updatedTask.createdAt = new Date(task.createdAt);
+        if (task.updatedAt) updatedTask.updatedAt = new Date(task.updatedAt);
+        if (task.dueDate) updatedTask.dueDate = new Date(task.dueDate);
+        if (task.completedAt) updatedTask.completedAt = new Date(task.completedAt);
+        if (task.archivedAt) updatedTask.archivedAt = new Date(task.archivedAt);
+
+        // 更新状态
+        updatedTask.status = toStatus as any;
+        updatedTask.completed = toStatus === 'done' || toStatus === 'archived';
+
+        // 更新 markdown
+        if (toStatus === 'todo' || toStatus === 'in-progress' || toStatus === 'review') {
+            updatedTask.markdown = updatedTask.markdown.replace(/^([*-]\s*)\[.\]/, '$1[ ]');
+        } else if (toStatus === 'done' || toStatus === 'archived') {
+            updatedTask.markdown = updatedTask.markdown.replace(/^([*-]\s*)\[.\]/, '$1[x]');
+        }
+
+        // 确保 customAttrs 存在
+        if (!updatedTask.customAttrs) {
+            updatedTask.customAttrs = {};
+        }
+
+        // 更新自定义属性
+        if (toStatus === 'in-progress' || toStatus === 'review' || toStatus === 'archived') {
+            updatedTask.customAttrs[TASK_ATTRS.STATUS] = toStatus;
+        } else {
+            delete updatedTask.customAttrs[TASK_ATTRS.STATUS];
+        }
+
+        // 更新完成时间
+        if (toStatus === 'done') {
+            const now = new Date();
+            updatedTask.customAttrs[TASK_ATTRS.COMPLETED_TIME] = now.toISOString();
+            updatedTask.completedAt = now;
+        } else if (toStatus === 'todo' || toStatus === 'in-progress' || toStatus === 'review') {
+            delete updatedTask.customAttrs[TASK_ATTRS.COMPLETED_TIME];
+            updatedTask.completedAt = undefined;
+        }
+
+        return updatedTask;
     }
 
     // 处理看板列折叠
