@@ -15,6 +15,7 @@
         QuickFilterType,
         KanbanColumn,
         TaskStatus,
+        TaskBlock,
         SqlResponse
     } from '../../types/task';
     import {
@@ -23,14 +24,24 @@
         sortTasks,
         calculateStats,
         buildTaskQuery,
+        parseCustomAttrs,
+        parseTaskStatus,
         TASK_ATTRS
     } from '../../libs/task-utils';
+    import { setBlockAttrs } from '../../api';
     import KanbanView from './task/KanbanView.svelte';
     import NotebookFilter from './task/NotebookFilter.svelte';
     import DateRangeSelector from './task/DateRangeSelector.svelte';
     import PriorityFilter from './task/PriorityFilter.svelte';
     import AddTaskDialog from './task/AddTaskDialog.svelte';
     import TaskSettingsDialog from './task/TaskSettingsDialog.svelte';
+
+    // ==================== 数据迁移配置常量 ====================
+    const MIGRATION_DEBOUNCE_MS = 2 * 60 * 1000;  // 防抖间隔：2分钟
+    const MIGRATION_BATCH_SIZE = 10;              // 每批处理任务数
+    const MIGRATION_BATCH_INTERVAL_MS = 300;      // 批次间隔：300ms
+    const MIGRATION_IDLE_TIMEOUT_MS = 2000;       // IdleCallback 超时：2秒
+    const MIGRATION_FALLBACK_DELAY_MS = 100;      // setTimeout 降级延迟：100ms
 
     export let app; // App 实例，用于打开文档
     export let plugin; // 插件实例，用于保存配置
@@ -140,9 +151,14 @@
     // 组件销毁时清理
     onDestroy(() => {
         mounted = false;  // 标记组件已销毁
+
+        // ✅ 清理定时器
         if (scrollTimeout !== null) {
             clearTimeout(scrollTimeout);
         }
+
+        // ✅ 取消待处理的迁移任务，防止资源泄漏
+        cancelPendingMigration();
     });
 
     async function loadConfig() {
@@ -236,10 +252,18 @@
                 if (response && response.code === 0) {
                     allTasks = transformTasks(response.data);
                     updateFilteredTasks();
+
+                    // ✅ 立即显示 UI
+                    loading = false;
+
+                    // ✅ 异步检测并迁移数据，不阻塞 UI
+                    setTimeout(() => {
+                        checkAndMigrateTaskStatus(response.data);
+                    }, 0);
                 } else {
                     error = response?.msg || '加载任务失败';
+                    loading = false;
                 }
-                loading = false;
             });
         } catch (err) {
             if (!mounted) return;
@@ -252,6 +276,162 @@
     // 暴露刷新方法
     export function refresh() {
         loadTasks();
+    }
+
+    // ==================== 数据迁移逻辑 ====================
+
+    // 防重复检测标记和回调 ID
+    let migrationInProgress = false;
+    let lastMigrationCheck = 0;
+    let migrationTimerId: number | null = null;
+    let migrationIdleCallbackId: number | null = null;
+
+    /**
+     * 检测并迁移缺少 status 属性的任务
+     * ✅ 只处理未完成状态（todo、in-progress、review）
+     * ✅ 轻量级检测，快速返回，不阻塞 UI
+     * ✅ 防止资源泄漏和并发问题
+     */
+    function checkAndMigrateTaskStatus(blocks: TaskBlock[]) {
+        // ✅ 检查组件是否已销毁
+        if (!mounted || !blocks || blocks.length === 0) return;
+
+        // 防抖：配置的时间间隔内只检测一次
+        const now = Date.now();
+        if (migrationInProgress || (now - lastMigrationCheck < MIGRATION_DEBOUNCE_MS)) {
+            console.log(`[数据迁移] 跳过检测 (inProgress: ${migrationInProgress}, 距上次: ${Math.floor((now - lastMigrationCheck) / 1000)}s)`);
+            return;
+        }
+
+        lastMigrationCheck = now;
+
+        // 快速检测：只遍历一次，收集需要迁移的任务
+        const tasksToMigrate: Array<{ id: string; status: TaskStatus }> = [];
+
+        for (const block of blocks) {
+            const customAttrs = parseCustomAttrs(block.ial);
+
+            // 如果没有 status 属性
+            if (!customAttrs[TASK_ATTRS.STATUS]) {
+                const { status } = parseTaskStatus(block.markdown);
+
+                // ✅ 只处理未完成状态：todo、in-progress、review
+                if (status === 'todo' || status === 'in-progress' || status === 'review') {
+                    tasksToMigrate.push({ id: block.id, status });
+                }
+            }
+        }
+
+        // 没有需要迁移的任务，立即返回
+        if (tasksToMigrate.length === 0) {
+            console.log(`[数据迁移] 无需迁移，所有任务都有 status 属性`);
+            return;
+        }
+
+        console.log(`[数据迁移] 检测到 ${tasksToMigrate.length} 个未完成任务需要添加 status 属性`);
+
+        // ✅ 先取消之前的待处理任务（如果有），确保最多只有一个迁移任务
+        cancelPendingMigration();
+
+        // ✅ 设置标志，防止并发
+        migrationInProgress = true;
+
+        // 使用 requestIdleCallback 在浏览器空闲时执行迁移
+        // 如果浏览器不支持，降级为 setTimeout
+        const startMigration = () => {
+            // ✅ 再次检查组件是否已销毁
+            if (!mounted) {
+                console.log(`[数据迁移] 组件已销毁，取消迁移`);
+                migrationInProgress = false;
+                return;
+            }
+
+            console.log(`[数据迁移] 开始执行迁移任务`);
+            migrateTaskStatusInBackground(tasksToMigrate)
+                .finally(() => {
+                    console.log(`[数据迁移] 迁移任务完成，重置状态标志`);
+                    migrationInProgress = false;
+                    migrationTimerId = null;
+                    migrationIdleCallbackId = null;
+                });
+        };
+
+        if (typeof requestIdleCallback !== 'undefined') {
+            migrationIdleCallbackId = requestIdleCallback(startMigration, { timeout: MIGRATION_IDLE_TIMEOUT_MS });
+            console.log(`[数据迁移] 已注册 IdleCallback，等待浏览器空闲`);
+        } else {
+            migrationTimerId = setTimeout(startMigration, MIGRATION_FALLBACK_DELAY_MS) as unknown as number;
+            console.log(`[数据迁移] 已注册 Timer，${MIGRATION_FALLBACK_DELAY_MS}ms 后执行`);
+        }
+    }
+
+    /**
+     * 取消待处理的迁移任务
+     */
+    function cancelPendingMigration() {
+        if (migrationTimerId !== null) {
+            clearTimeout(migrationTimerId);
+            migrationTimerId = null;
+        }
+        if (migrationIdleCallbackId !== null && typeof cancelIdleCallback !== 'undefined') {
+            cancelIdleCallback(migrationIdleCallbackId);
+            migrationIdleCallbackId = null;
+        }
+        migrationInProgress = false;
+    }
+
+    /**
+     * 在后台批量迁移任务状态属性
+     * ✅ 分批处理，使用配置的批次大小和间隔
+     * ✅ 每批处理前检查组件状态，避免资源泄漏
+     */
+    async function migrateTaskStatusInBackground(tasks: Array<{ id: string; status: TaskStatus }>) {
+        const totalBatches = Math.ceil(tasks.length / MIGRATION_BATCH_SIZE);
+
+        console.log(`[数据迁移] 开始迁移，共 ${tasks.length} 个任务，分 ${totalBatches} 批处理`);
+
+        for (let i = 0; i < totalBatches; i++) {
+            // ✅ 每批处理前检查组件是否已销毁
+            if (!mounted) {
+                console.log(`[数据迁移] 组件已销毁，中止迁移`);
+                return;
+            }
+
+            const start = i * MIGRATION_BATCH_SIZE;
+            const end = Math.min(start + MIGRATION_BATCH_SIZE, tasks.length);
+            const batch = tasks.slice(start, end);
+
+            try {
+                // 批量并发更新当前批次
+                const promises = batch.map(task =>
+                    setBlockAttrs(task.id, {
+                        [TASK_ATTRS.STATUS]: task.status
+                    }).catch(err => {
+                        console.error(`[数据迁移] 更新任务 ${task.id} 失败:`, err);
+                        return null;
+                    })
+                );
+
+                await Promise.all(promises);
+
+                console.log(`[数据迁移] 完成第 ${i + 1}/${totalBatches} 批，已迁移 ${end}/${tasks.length} 个任务`);
+            } catch (err) {
+                console.error(`[数据迁移] 批次 ${i + 1} 处理失败:`, err);
+            }
+
+            // 每批之间间隔，避免对系统造成压力
+            if (i < totalBatches - 1) {
+                await new Promise(resolve => setTimeout(resolve, MIGRATION_BATCH_INTERVAL_MS));
+            }
+        }
+
+        console.log(`[数据迁移] 全部完成，共迁移 ${tasks.length} 个任务`);
+
+        // ✅ 迁移完成后重新加载任务，确保 UI 显示最新数据
+        if (mounted) {
+            console.log(`[数据迁移] 重新加载任务以更新 UI`);
+            loadTasks();
+        }
     }
 
     // 更新筛选后的任务
@@ -407,11 +587,8 @@
         // 更新状态属性
         if (newState.status !== undefined) {
             const status = newState.status;
-            if (status === 'in-progress' || status === 'review' || status === 'archived') {
-                attrs[TASK_ATTRS.STATUS] = status;
-            } else {
-                attrs[TASK_ATTRS.STATUS] = '';  // 删除
-            }
+            // 所有状态都保留 status 属性，便于统一查询和管理
+            attrs[TASK_ATTRS.STATUS] = status;
 
             // 更新完成时间
             if (status === 'done') {
@@ -548,11 +725,8 @@
         }
 
         // 更新自定义属性
-        if (toStatus === 'in-progress' || toStatus === 'review' || toStatus === 'archived') {
-            updatedTask.customAttrs[TASK_ATTRS.STATUS] = toStatus;
-        } else {
-            delete updatedTask.customAttrs[TASK_ATTRS.STATUS];
-        }
+        // 所有状态都保留 status 属性，保持与后端逻辑一致
+        updatedTask.customAttrs[TASK_ATTRS.STATUS] = toStatus;
 
         // 更新完成时间
         if (toStatus === 'done') {
