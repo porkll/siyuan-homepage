@@ -317,97 +317,206 @@
         }
     }
 
+    // ==================== 任务更新核心系统 ====================
+
+    /**
+     * 统一的任务更新接口
+     * @param task 要更新的任务
+     * @param updates 更新内容
+     */
+    interface TaskUpdate {
+        status?: TaskStatus;           // 任务状态
+        dueDate?: Date | null;        // 截止日期（null 表示清除）
+        priority?: string | null;     // 优先级（null 表示清除）
+        archived?: boolean;           // 是否归档
+    }
+
+    /**
+     * 核心函数：更新任务
+     * - 乐观更新本地状态
+     * - 按正确顺序同步到后端（markdown -> 属性）
+     * - 自动保留所有原有属性
+     */
+    function updateTask(task: Task, updates: TaskUpdate) {
+        try {
+            // === 步骤1: 计算新状态和需要更新的内容 ===
+            const newState = computeNewTaskState(task, updates);
+
+            // === 步骤2: 乐观更新本地 ===
+            applyOptimisticUpdate(task, newState);
+
+            // === 步骤3: 同步到后端 ===
+            syncTaskToBackend(task, newState);
+
+        } catch (err) {
+            console.error('Failed to update task:', err);
+            showError('更新任务失败');
+        }
+    }
+
+    /**
+     * 计算任务的新状态
+     */
+    function computeNewTaskState(task: Task, updates: TaskUpdate) {
+        const now = new Date();
+        const newState: any = {};
+
+        // 处理归档（优先级最高，会设置 status）
+        if (updates.archived) {
+            newState.status = 'archived';
+            newState.completed = true;
+            newState.archivedAt = now;
+            newState.needUpdateMarkdown = true;
+            newState.newMarkdown = task.markdown.replace(/^([*-]\s*)\[.\]/, '$1[x]');
+        }
+        // 处理状态变更（只有在不归档时才处理）
+        else if (updates.status !== undefined) {
+            newState.status = updates.status;
+            newState.completed = updates.status === 'done' || updates.status === 'archived';
+
+            // 判断是否需要更新 markdown
+            const targetCheckbox = (updates.status === 'todo' || updates.status === 'in-progress' || updates.status === 'review') ? '[ ]' : '[x]';
+            const currentCheckbox = task.markdown.match(/\[(.*?)\]/)?.[1] || ' ';
+            newState.needUpdateMarkdown = currentCheckbox !== targetCheckbox.slice(1, -1);
+            newState.newMarkdown = task.markdown.replace(/^([*-]\s*)\[.\]/, `$1${targetCheckbox}`);
+        }
+
+        // 处理截止日期变更
+        if (updates.dueDate !== undefined) {
+            newState.dueDate = updates.dueDate;
+        }
+
+        // 处理优先级变更
+        if (updates.priority !== undefined) {
+            newState.priority = updates.priority;
+        }
+
+        // 计算需要设置的属性
+        newState.attrs = computeTaskAttributes(task, newState, now);
+
+        return newState;
+    }
+
+    /**
+     * 计算任务的所有属性（保留原有 + 更新变更）
+     */
+    function computeTaskAttributes(task: Task, newState: any, now: Date): Record<string, string> {
+        // 复制所有原有属性
+        const attrs: Record<string, string> = { ...(task.customAttrs || {}) };
+
+        // 更新状态属性
+        if (newState.status !== undefined) {
+            const status = newState.status;
+            if (status === 'in-progress' || status === 'review' || status === 'archived') {
+                attrs[TASK_ATTRS.STATUS] = status;
+            } else {
+                attrs[TASK_ATTRS.STATUS] = '';  // 删除
+            }
+
+            // 更新完成时间
+            if (status === 'done') {
+                attrs[TASK_ATTRS.COMPLETED_TIME] = now.toISOString();
+            } else if (status === 'todo' || status === 'in-progress' || status === 'review') {
+                attrs[TASK_ATTRS.COMPLETED_TIME] = '';  // 删除
+            }
+        }
+
+        // 更新归档时间
+        if (newState.archivedAt) {
+            attrs[TASK_ATTRS.ARCHIVED_TIME] = newState.archivedAt.toISOString();
+            if (!attrs[TASK_ATTRS.COMPLETED_TIME]) {
+                attrs[TASK_ATTRS.COMPLETED_TIME] = now.toISOString();
+            }
+        }
+
+        // 更新截止日期
+        if (newState.dueDate !== undefined) {
+            attrs[TASK_ATTRS.DUE_DATE] = newState.dueDate ? newState.dueDate.toISOString() : '';
+        }
+
+        // 更新优先级
+        if (newState.priority !== undefined) {
+            attrs[TASK_ATTRS.PRIORITY] = newState.priority || '';
+        }
+
+        return attrs;
+    }
+
+    /**
+     * 应用乐观更新到本地状态
+     */
+    function applyOptimisticUpdate(task: Task, newState: any) {
+        // 使用深拷贝创建新任务对象
+        const updatedTask = updateTaskLocalState(task, newState.status || task.status);
+
+        // 应用其他更新
+        if (newState.dueDate !== undefined) {
+            updatedTask.dueDate = newState.dueDate;
+            // 同步更新 customAttrs
+            if (!updatedTask.customAttrs) updatedTask.customAttrs = {};
+            updatedTask.customAttrs[TASK_ATTRS.DUE_DATE] = newState.dueDate ? newState.dueDate.toISOString() : '';
+        }
+        if (newState.priority !== undefined) {
+            updatedTask.priority = newState.priority;
+            // 同步更新 customAttrs
+            if (!updatedTask.customAttrs) updatedTask.customAttrs = {};
+            updatedTask.customAttrs[TASK_ATTRS.PRIORITY] = newState.priority || '';
+        }
+        if (newState.archivedAt) updatedTask.archivedAt = newState.archivedAt;
+
+        // 更新本地任务列表
+        allTasks = allTasks.map(t => t.id === task.id ? updatedTask : t);
+        filteredTasks = filteredTasks.map(t => t.id === task.id ? updatedTask : t);
+    }
+
+    /**
+     * 同步任务到后端（按正确顺序：markdown -> 属性）
+     */
+    function syncTaskToBackend(task: Task, newState: any) {
+        // 如果需要更新 markdown，先更新它（因为 updateBlock 会清除属性）
+        if (newState.needUpdateMarkdown) {
+            fetchPost('/api/block/updateBlock', {
+                id: task.id,
+                dataType: 'markdown',
+                data: newState.newMarkdown
+            }, (response) => {
+                if (response && response.code === 0) {
+                    // markdown 更新成功后，设置所有属性
+                    setTaskAttributesAPI(task.id, newState.attrs);
+                } else {
+                    console.error('Failed to update markdown:', response);
+                    showError('更新任务失败');
+                }
+            });
+        } else {
+            // 不需要更新 markdown，直接设置属性
+            setTaskAttributesAPI(task.id, newState.attrs);
+        }
+    }
+
+    /**
+     * 调用 API 设置任务属性
+     */
+    function setTaskAttributesAPI(taskId: string, attrs: Record<string, string>) {
+        fetchPost('/api/attr/setBlockAttrs', {
+            id: taskId,
+            attrs: attrs
+        }, (response) => {
+            if (response && response.code === 0) {
+                console.log('Task updated successfully:', taskId);
+            } else {
+                console.error('Failed to set attributes:', response);
+                showError('更新任务属性失败');
+            }
+        });
+    }
+
+    // ==================== 事件处理函数（业务层） ====================
+
     // 处理任务移动（更新状态）
     function handleTaskMove(event: CustomEvent) {
         const { task, toStatus } = event.detail;
-
-        try {
-            // === 步骤1: 立即更新本地任务状态（乐观更新） ===
-            const updatedTask = updateTaskLocalState(task, toStatus);
-
-            // 更新 allTasks 和 filteredTasks，触发 Svelte 响应式更新
-            allTasks = allTasks.map(t => t.id === task.id ? updatedTask : t);
-            filteredTasks = filteredTasks.map(t => t.id === task.id ? updatedTask : t);
-
-            // === 步骤2: 异步更新后端，不阻塞 UI ===
-            // 判断是否需要更新 markdown（仅 todo/done 需要）
-            let needUpdateMarkdown = false;
-            let newMarkdown = task.markdown;
-
-            if (toStatus === 'todo' || toStatus === 'in-progress' || toStatus === 'review') {
-                // 这些状态都用 [ ]
-                if (!task.markdown.match(/^[*-]\s*\[\s\]/)) {
-                    newMarkdown = task.markdown.replace(/^([*-]\s*)\[.\]/, '$1[ ]');
-                    needUpdateMarkdown = true;
-                }
-            } else if (toStatus === 'done' || toStatus === 'archived') {
-                // 这些状态都用 [x]
-                if (!task.markdown.match(/^[*-]\s*\[x\]/i)) {
-                    newMarkdown = task.markdown.replace(/^([*-]\s*)\[.\]/, '$1[x]');
-                    needUpdateMarkdown = true;
-                }
-            }
-
-            // 准备自定义属性
-            const attrs: Record<string, string> = {};
-            if (toStatus === 'in-progress' || toStatus === 'review' || toStatus === 'archived') {
-                // 需要设置 custom-task-status 属性
-                attrs[TASK_ATTRS.STATUS] = toStatus;
-            } else {
-                // todo 和 done 不需要 custom-task-status，如果有的话需要移除
-                // 通过设置为空字符串来移除属性
-                if (task.customAttrs?.[TASK_ATTRS.STATUS]) {
-                    attrs[TASK_ATTRS.STATUS] = '';
-                }
-            }
-
-            // 完成时间管理：记录任务完成的准确时间戳
-            if (toStatus === 'done') {
-                // 移动到已完成状态时，设置当前时间为完成时间
-                attrs[TASK_ATTRS.COMPLETED_TIME] = new Date().toISOString();
-            } else if (toStatus === 'todo' || toStatus === 'in-progress' || toStatus === 'review') {
-                // 从已完成移回活跃状态时，清除完成时间（通过设置空字符串删除属性）
-                if (task.customAttrs?.[TASK_ATTRS.COMPLETED_TIME]) {
-                    attrs[TASK_ATTRS.COMPLETED_TIME] = '';
-                }
-            }
-
-            // 先更新属性，再更新 markdown
-            fetchPost('/api/attr/setBlockAttrs', {
-                id: task.id,
-                attrs: attrs
-            }, (attrResponse) => {
-                if (attrResponse && attrResponse.code === 0) {
-                    // 如果需要更新 markdown
-                    if (needUpdateMarkdown) {
-                        fetchPost('/api/block/updateBlock', {
-                            id: task.id,
-                            dataType: 'markdown',
-                            data: newMarkdown
-                        }, (updateResponse) => {
-                            if (updateResponse && updateResponse.code === 0) {
-                                // ✅ 不调用 loadTasks()，避免刷新组件
-                                console.log('Task updated successfully:', task.id);
-                            } else {
-                                console.error('Failed to update block:', updateResponse);
-                                // 如果更新失败，可以选择回滚或提示用户
-                                showError('更新任务失败');
-                            }
-                        });
-                    } else {
-                        // ✅ 不调用 loadTasks()，避免刷新组件
-                        console.log('Task attrs updated successfully:', task.id);
-                    }
-                } else {
-                    console.error('Failed to set attrs:', attrResponse);
-                    // 如果更新失败，可以选择回滚或提示用户
-                    showError('更新任务属性失败');
-                }
-            });
-        } catch (err) {
-            console.error('Failed to move task:', err);
-            showError('移动任务失败');
-        }
+        updateTask(task, { status: toStatus });
     }
 
     // 辅助函数：更新任务的本地状态（用于乐观更新）
@@ -524,102 +633,19 @@
     // 处理任务截止日期变化
     function handleTaskDueDateChange(event: CustomEvent) {
         const { task, dueDate } = event.detail;
-
-        try {
-            const attrs: Record<string, string> = {};
-            if (dueDate) {
-                // 将日期转换为 ISO 字符串
-                attrs[TASK_ATTRS.DUE_DATE] = dueDate.toISOString();
-            } else {
-                // 清除截止日期
-                attrs[TASK_ATTRS.DUE_DATE] = '';
-            }
-
-            fetchPost('/api/attr/setBlockAttrs', {
-                id: task.id,
-                attrs: attrs
-            }, (response) => {
-                if (response && response.code === 0) {
-                    loadTasks();
-                } else {
-                    console.error('Failed to set due date:', response);
-                }
-            });
-        } catch (err) {
-            console.error('Failed to set due date:', err);
-        }
+        updateTask(task, { dueDate });
     }
 
     // 处理任务优先级变化
     function handleTaskPriorityChange(event: CustomEvent) {
         const { task, priority } = event.detail;
-
-        try {
-            const attrs: Record<string, string> = {};
-            if (priority) {
-                attrs[TASK_ATTRS.PRIORITY] = priority;
-            } else {
-                // 清除优先级
-                attrs[TASK_ATTRS.PRIORITY] = '';
-            }
-
-            fetchPost('/api/attr/setBlockAttrs', {
-                id: task.id,
-                attrs: attrs
-            }, (response) => {
-                if (response && response.code === 0) {
-                    loadTasks();
-                } else {
-                    console.error('Failed to set priority:', response);
-                }
-            });
-        } catch (err) {
-            console.error('Failed to set priority:', err);
-        }
+        updateTask(task, { priority });
     }
 
     // 处理任务归档
     function handleTaskArchive(event: CustomEvent) {
         const { task } = event.detail;
-
-        try {
-            // 归档任务：设置状态为 archived 并标记为已完成
-            const attrs: Record<string, string> = {
-                [TASK_ATTRS.STATUS]: 'archived',
-                [TASK_ATTRS.ARCHIVED_TIME]: new Date().toISOString()
-            };
-
-            // 如果任务还没有完成时间，也设置完成时间
-            if (!task.customAttrs?.[TASK_ATTRS.COMPLETED_TIME]) {
-                attrs[TASK_ATTRS.COMPLETED_TIME] = new Date().toISOString();
-            }
-
-            // 先更新属性
-            fetchPost('/api/attr/setBlockAttrs', {
-                id: task.id,
-                attrs: attrs
-            }, (attrResponse) => {
-                if (attrResponse && attrResponse.code === 0) {
-                    // 然后更新 markdown 为已完成状态
-                    const newMarkdown = task.markdown.replace(/^([*-]\s*)\[.\]/, '$1[x]');
-                    fetchPost('/api/block/updateBlock', {
-                        id: task.id,
-                        dataType: 'markdown',
-                        data: newMarkdown
-                    }, (updateResponse) => {
-                        if (updateResponse && updateResponse.code === 0) {
-                            loadTasks();
-                        } else {
-                            console.error('Failed to update block:', updateResponse);
-                        }
-                    });
-                } else {
-                    console.error('Failed to set attrs:', attrResponse);
-                }
-            });
-        } catch (err) {
-            console.error('Failed to archive task:', err);
-        }
+        updateTask(task, { archived: true });
     }
 
     // ==================== 工具函数 ====================
