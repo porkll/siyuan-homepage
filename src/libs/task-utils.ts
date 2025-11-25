@@ -27,6 +27,23 @@ export const TASK_ATTRS = {
     DAILY_TODO_HEADING: 'custom-daily-todo',
 } as const;
 
+/**
+ * 任务状态配置常量
+ * 将来可以支持用户自定义状态
+ */
+export const TASK_STATUS = {
+    TODO: 'todo' as TaskStatus,
+    IN_PROGRESS: 'in-progress' as TaskStatus,
+    REVIEW: 'review' as TaskStatus,
+    DONE: 'done' as TaskStatus,
+    ARCHIVED: 'archived' as TaskStatus,
+} as const;
+
+/**
+ * 默认新建任务的状态
+ */
+export const DEFAULT_TASK_STATUS = TASK_STATUS.TODO;
+
 // ==================== 数据转换 ====================
 
 /**
@@ -35,15 +52,15 @@ export const TASK_ATTRS = {
 export function parseTaskStatus(markdown: string): { completed: boolean; status: TaskStatus } {
     // 标准任务标记
     if (markdown.startsWith('* [ ] ') || markdown.startsWith('- [ ] ')) {
-        return { completed: false, status: 'todo' };
+        return { completed: false, status: TASK_STATUS.TODO };
     }
     if (markdown.startsWith('* [x] ') || markdown.startsWith('* [X] ') ||
         markdown.startsWith('- [x] ') || markdown.startsWith('- [X] ')) {
-        return { completed: true, status: 'done' };
+        return { completed: true, status: TASK_STATUS.DONE };
     }
 
     // 默认为待办
-    return { completed: false, status: 'todo' };
+    return { completed: false, status: TASK_STATUS.TODO };
 }
 
 /**
@@ -52,10 +69,13 @@ export function parseTaskStatus(markdown: string): { completed: boolean; status:
 export function extractStatus(customAttrs: Record<string, any>, markdown: string): { completed: boolean; status: TaskStatus } {
     const customStatus = customAttrs[TASK_ATTRS.STATUS];
 
+    // 所有有效的状态值（使用配置常量）
+    const validStatuses = Object.values(TASK_STATUS);
+
     // 如果有自定义状态属性，使用自定义状态
-    if (customStatus && ['todo', 'in-progress', 'review', 'done', 'archived'].includes(customStatus)) {
+    if (customStatus && validStatuses.includes(customStatus)) {
         const status = customStatus as TaskStatus;
-        const completed = status === 'done' || status === 'archived';
+        const completed = status === TASK_STATUS.DONE || status === TASK_STATUS.ARCHIVED;
         return { completed, status };
     }
 
@@ -178,7 +198,7 @@ export function transformTaskBlock(block: TaskBlock): Task {
         updatedAt: parseSiyuanTimestamp(block.updated),
         dueDate: extractDueDate(customAttrs),
         // 完成时间优先使用自定义属性，如果没有则回退使用更新时间（仅限已完成但非归档的任务）
-        completedAt: completedTime || (completed && status !== 'archived' ? parseSiyuanTimestamp(block.updated) : undefined),
+        completedAt: completedTime || (completed && status !== TASK_STATUS.ARCHIVED ? parseSiyuanTimestamp(block.updated) : undefined),
         archivedAt: archivedTime,
 
         notebookId: block.box,
@@ -473,7 +493,7 @@ export function groupByPriority(tasks: Task[]): Map<TaskPriority | 'none', Task[
 export function calculateStats(tasks: Task[]) {
     const total = tasks.length;
     const completed = tasks.filter(t => t.completed).length;
-    const inProgress = tasks.filter(t => t.status === 'in-progress').length;
+    const inProgress = tasks.filter(t => t.status === TASK_STATUS.IN_PROGRESS).length;
     const overdue = tasks.filter(t =>
         t.dueDate && !t.completed && t.dueDate < new Date()
     ).length;

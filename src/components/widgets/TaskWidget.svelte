@@ -26,8 +26,11 @@
         buildTaskQuery,
         parseCustomAttrs,
         parseTaskStatus,
-        TASK_ATTRS
+        TASK_ATTRS,
+        TASK_STATUS,
+        DEFAULT_TASK_STATUS
     } from '../../libs/task-utils';
+    import { deepMerge } from '../../libs/utils';
     import { setBlockAttrs } from '../../api';
     import KanbanView from './task/KanbanView.svelte';
     import NotebookFilter from './task/NotebookFilter.svelte';
@@ -55,7 +58,7 @@
         {
             id: 'todo',
             title: '待办',
-            status: 'todo' as TaskStatus,
+            status: TASK_STATUS.TODO,
             color: '#94a3b8',
             icon: '',
             order: 1
@@ -63,7 +66,7 @@
         {
             id: 'in-progress',
             title: '进行中',
-            status: 'in-progress' as TaskStatus,
+            status: TASK_STATUS.IN_PROGRESS,
             color: '#3b82f6',
             icon: '',
             order: 2
@@ -71,7 +74,7 @@
         {
             id: 'review',
             title: '审核中',
-            status: 'review' as TaskStatus,
+            status: TASK_STATUS.REVIEW,
             color: '#f59e0b',
             icon: '',
             order: 3
@@ -79,7 +82,7 @@
         {
             id: 'done',
             title: '已完成',
-            status: 'done' as TaskStatus,
+            status: TASK_STATUS.DONE,
             color: '#10b981',
             icon: '',
             order: 4
@@ -127,9 +130,10 @@
     let scrollTimeout: number | null = null;  // 滚动定时器
     let mounted = true;  // 组件挂载状态
 
-    // 任务设置（日记笔记本等）
+    // 任务设置（日记笔记本、快捷状态等）
     let taskSettings = {
-        dailyNoteNotebookId: '' // 日记笔记本ID
+        dailyNoteNotebookId: '', // 日记笔记本ID
+        quickStatusChange: TASK_STATUS.ARCHIVED as TaskStatus // 快捷状态变更的目标状态
     };
 
     // 统计信息
@@ -167,7 +171,12 @@
         try {
             const savedConfig = await plugin.loadData(STORAGE_KEY);
             if (savedConfig) {
-                config = { ...DEFAULT_CONFIG, ...savedConfig };
+                // 使用深度合并而不是浅合并
+                config = deepMerge(DEFAULT_CONFIG, savedConfig);
+
+                console.log('[TaskWidget] Config loaded:', {
+                    kanbanColumns: config.viewConfigs.kanban.columns.map(c => ({ id: c.id, status: c.status, order: c.order }))
+                });
 
                 // 将日期字符串转换回 Date 对象
                 if (config.filter.dateFilters?.created) {
@@ -194,6 +203,8 @@
                         config.filter.dateFilters.completedDate.end = new Date(config.filter.dateFilters.completedDate.end);
                     }
                 }
+            } else {
+                console.log('[TaskWidget] No saved config found, using default');
             }
         } catch (err) {
             console.error('Failed to load task widget config:', err);
@@ -205,6 +216,9 @@
 
         try {
             await plugin.saveData(STORAGE_KEY, config);
+            console.log('[TaskWidget] Config saved:', {
+                kanbanColumns: config.viewConfigs.kanban.columns.map(c => ({ id: c.id, status: c.status, order: c.order }))
+            });
         } catch (err) {
             console.error('Failed to save task widget config:', err);
         }
@@ -316,7 +330,7 @@
                 const { status } = parseTaskStatus(block.markdown);
 
                 // ✅ 只处理未完成状态：todo、in-progress、review
-                if (status === 'todo' || status === 'in-progress' || status === 'review') {
+                if (status === TASK_STATUS.TODO || status === TASK_STATUS.IN_PROGRESS || status === TASK_STATUS.REVIEW) {
                     tasksToMigrate.push({ id: block.id, status });
                 }
             }
@@ -543,7 +557,7 @@
 
         // 处理归档（优先级最高，会设置 status）
         if (updates.archived) {
-            newState.status = 'archived';
+            newState.status = TASK_STATUS.ARCHIVED;
             newState.completed = true;
             newState.archivedAt = now;
             newState.needUpdateMarkdown = true;
@@ -552,10 +566,10 @@
         // 处理状态变更（只有在不归档时才处理）
         else if (updates.status !== undefined) {
             newState.status = updates.status;
-            newState.completed = updates.status === 'done' || updates.status === 'archived';
+            newState.completed = updates.status === TASK_STATUS.DONE || updates.status === TASK_STATUS.ARCHIVED;
 
             // 判断是否需要更新 markdown
-            const targetCheckbox = (updates.status === 'todo' || updates.status === 'in-progress' || updates.status === 'review') ? '[ ]' : '[x]';
+            const targetCheckbox = (updates.status === TASK_STATUS.TODO || updates.status === TASK_STATUS.IN_PROGRESS || updates.status === TASK_STATUS.REVIEW) ? '[ ]' : '[x]';
             const currentCheckbox = task.markdown.match(/\[(.*?)\]/)?.[1] || ' ';
             newState.needUpdateMarkdown = currentCheckbox !== targetCheckbox.slice(1, -1);
             newState.newMarkdown = task.markdown.replace(/^([*-]\s*)\[.\]/, `$1${targetCheckbox}`);
@@ -591,9 +605,9 @@
             attrs[TASK_ATTRS.STATUS] = status;
 
             // 更新完成时间
-            if (status === 'done') {
+            if (status === TASK_STATUS.DONE) {
                 attrs[TASK_ATTRS.COMPLETED_TIME] = now.toISOString();
-            } else if (status === 'todo' || status === 'in-progress' || status === 'review') {
+            } else if (status === TASK_STATUS.TODO || status === TASK_STATUS.IN_PROGRESS || status === TASK_STATUS.REVIEW) {
                 attrs[TASK_ATTRS.COMPLETED_TIME] = '';  // 删除
             }
         }
@@ -710,12 +724,12 @@
 
         // 更新状态
         updatedTask.status = toStatus as any;
-        updatedTask.completed = toStatus === 'done' || toStatus === 'archived';
+        updatedTask.completed = toStatus === TASK_STATUS.DONE || toStatus === TASK_STATUS.ARCHIVED;
 
         // 更新 markdown
-        if (toStatus === 'todo' || toStatus === 'in-progress' || toStatus === 'review') {
+        if (toStatus === TASK_STATUS.TODO || toStatus === TASK_STATUS.IN_PROGRESS || toStatus === TASK_STATUS.REVIEW) {
             updatedTask.markdown = updatedTask.markdown.replace(/^([*-]\s*)\[.\]/, '$1[ ]');
-        } else if (toStatus === 'done' || toStatus === 'archived') {
+        } else if (toStatus === TASK_STATUS.DONE || toStatus === TASK_STATUS.ARCHIVED) {
             updatedTask.markdown = updatedTask.markdown.replace(/^([*-]\s*)\[.\]/, '$1[x]');
         }
 
@@ -729,11 +743,11 @@
         updatedTask.customAttrs[TASK_ATTRS.STATUS] = toStatus;
 
         // 更新完成时间
-        if (toStatus === 'done') {
+        if (toStatus === TASK_STATUS.DONE) {
             const now = new Date();
             updatedTask.customAttrs[TASK_ATTRS.COMPLETED_TIME] = now.toISOString();
             updatedTask.completedAt = now;
-        } else if (toStatus === 'todo' || toStatus === 'in-progress' || toStatus === 'review') {
+        } else if (toStatus === TASK_STATUS.TODO || toStatus === TASK_STATUS.IN_PROGRESS || toStatus === TASK_STATUS.REVIEW) {
             delete updatedTask.customAttrs[TASK_ATTRS.COMPLETED_TIME];
             updatedTask.completedAt = undefined;
         }
@@ -816,10 +830,10 @@
         updateTask(task, { priority });
     }
 
-    // 处理任务归档
-    function handleTaskArchive(event: CustomEvent) {
-        const { task } = event.detail;
-        updateTask(task, { archived: true });
+    // 处理任务状态变更
+    function handleTaskStatusChange(event: CustomEvent) {
+        const { task, status } = event.detail;
+        updateTask(task, { status });
     }
 
     // ==================== 工具函数 ====================
@@ -935,23 +949,23 @@
             throw new Error('Failed to get task ID from response');
         }
 
-        // 设置任务属性（优先级、截止日期）
-        const attrs: Record<string, string> = {};
+        // 设置任务属性（状态、优先级、截止日期）
+        const attrs: Record<string, string> = {
+            [TASK_ATTRS.STATUS]: DEFAULT_TASK_STATUS  // 新任务默认状态
+        };
         if (priority) attrs[TASK_ATTRS.PRIORITY] = priority;
         if (dueDate) attrs[TASK_ATTRS.DUE_DATE] = dueDate.toISOString();
 
-        if (Object.keys(attrs).length > 0) {
-            await fetchPostAsync('/api/attr/setBlockAttrs', {
-                id: taskId,
-                attrs: attrs
-            });
-        }
+        await fetchPostAsync('/api/attr/setBlockAttrs', {
+            id: taskId,
+            attrs: attrs
+        });
 
         return taskId;
     }
 
     /**
-     * 处理添加新任务
+     * 处理添加新任务（使用乐观更新）
      */
     async function handleAddTask(event: CustomEvent) {
         const { content, priority, dueDate } = event.detail;
@@ -963,30 +977,125 @@
             return;
         }
 
+        // 生成临时任务 ID（用于乐观更新）
+        const tempId = `temp-${Date.now()}-${Math.random()}`;
+        const now = new Date();
+
+        // 1. 创建临时任务对象（乐观更新）
+        const optimisticTask: Task = {
+            id: tempId,
+            content: content,
+            markdown: `- [ ] ${content}`,
+            completed: false,
+            status: DEFAULT_TASK_STATUS,
+            priority: priority || undefined,
+            dueDate: dueDate || undefined,
+            createdAt: now,
+            updatedAt: now,
+            docId: '', // 待后端返回
+            docName: '今日日记',
+            notebookId: taskSettings.dailyNoteNotebookId,
+            notebookName: '',
+            customAttrs: {
+                [TASK_ATTRS.STATUS]: DEFAULT_TASK_STATUS,
+                ...(priority && { [TASK_ATTRS.PRIORITY]: priority }),
+                ...(dueDate && { [TASK_ATTRS.DUE_DATE]: dueDate.toISOString() })
+            }
+        };
+
+        // 2. 立即添加到本地状态（乐观更新）
+        allTasks = [optimisticTask, ...allTasks];
+
+        // 重新筛选，但确保临时任务总是可见
+        let newFiltered = applyFilter(allTasks, config.filter);
+
+        // 如果临时任务被筛选掉了，强制添加它（让用户看到即时反馈）
+        if (!newFiltered.find(t => t.id === tempId)) {
+            newFiltered = [optimisticTask, ...newFiltered];
+        }
+
+        filteredTasks = newFiltered;
+
+        // 3. 显示乐观反馈（对话框会自动在 100ms 后关闭）
+        showSuccess('✅ 正在添加任务...');
+
         try {
-            // 1. 创建或获取今日日记
+            // 4. 异步添加到后端
             const dailyNote = await fetchPostAsync('/api/filetree/createDailyNote', {
                 notebook: taskSettings.dailyNoteNotebookId
             });
             const docId = dailyNote.data.id;
 
-            // 2. 查找带标记属性的"待办"标题
             let todoHeadingId = await findTodoHeadingBySQL(docId);
-
-            // 3. 如果不存在，创建新标题
             if (!todoHeadingId) {
                 todoHeadingId = await createTodoHeading(docId);
             }
 
-            // 4. 添加任务
-            await addTaskToHeading(todoHeadingId, content, priority, dueDate);
+            const realTaskId = await addTaskToHeading(todoHeadingId, content, priority, dueDate);
 
-            // 5. 刷新并通知
-            loadTasks();
-            showSuccess('✅ 任务已添加到今日日记');
+            // 5. 后端成功后，用真实任务替换临时任务
+            // 重新加载任务列表以获取完整的任务数据
+            await new Promise<void>((resolve) => {
+                const sql = buildTaskQuery(config.filter);
+                fetchPost('/api/query/sql', { stmt: sql }, (response) => {
+                    if (!mounted) return;
+
+                    if (response && response.code === 0) {
+                        console.log('[AddTask] Loaded tasks count:', response.data.length);
+                        const transformedTasks = transformTasks(response.data);
+                        console.log('[AddTask] Transformed tasks count:', transformedTasks.length);
+                        console.log('[AddTask] Current filter:', config.filter);
+
+                        // 找到新添加的任务
+                        const newTask = transformedTasks.find(t => t.id === realTaskId);
+                        console.log('[AddTask] New task found:', newTask);
+
+                        // 移除临时任务
+                        allTasks = transformedTasks;
+
+                        // 重新筛选
+                        let newFiltered = applyFilter(allTasks, config.filter);
+                        console.log('[AddTask] After filter, tasks count:', newFiltered.length);
+
+                        // 如果新任务被筛选掉了，检查是否应该强制添加
+                        if (newTask && !newFiltered.find(t => t.id === realTaskId)) {
+                            // 检查新任务的状态是否在当前看板列中显示
+                            const statusVisible = config.viewConfigs.kanban.columns
+                                .some(col => col.status === newTask.status);
+
+                            // 只有当状态在看板中显示时，才强制添加（被日期/优先级等过滤掉的情况）
+                            if (statusVisible) {
+                                console.log('[AddTask] New task filtered by date/priority/etc, force adding');
+                                newFiltered = [newTask, ...newFiltered];
+                            } else {
+                                console.log('[AddTask] New task status not visible in kanban, skipping force add');
+                            }
+                        }
+
+                        // 根据视图配置排序
+                        if (config.currentView === 'kanban' && config.viewConfigs.kanban) {
+                            const { sortBy, sortOrder } = config.viewConfigs.kanban;
+                            if (sortBy) {
+                                newFiltered = sortTasks(newFiltered, sortBy, sortOrder);
+                            }
+                        }
+
+                        filteredTasks = newFiltered;
+                        console.log('[AddTask] Final filtered tasks count:', filteredTasks.length);
+
+                        showSuccess('✅ 任务已添加到今日日记');
+                    }
+                    resolve();
+                });
+            });
 
         } catch (err) {
             console.error('[AddTask] Failed to add task:', err);
+
+            // 6. 后端失败，移除乐观添加的任务
+            allTasks = allTasks.filter(t => t.id !== tempId);
+            updateFilteredTasks();
+
             showError(`❌ 添加任务失败: ${err.message || '未知错误'}`);
         }
     }
@@ -1013,8 +1122,78 @@
 
     // 保存设置
     function handleSaveSettings(event: CustomEvent) {
-        taskSettings.dailyNoteNotebookId = event.detail.notebookId;
+        const { notebookId, selectedStatuses, quickStatusChange } = event.detail;
+
+        console.log('[TaskWidget] Saving settings:', { selectedStatuses, quickStatusChange });
+
+        taskSettings.dailyNoteNotebookId = notebookId;
+        taskSettings.quickStatusChange = quickStatusChange;
         saveTaskSettings();
+
+        // 根据选中的状态更新看板列配置
+        if (selectedStatuses && selectedStatuses.length > 0) {
+            console.log('[TaskWidget] Updating kanban columns from statuses:', selectedStatuses);
+            updateKanbanColumnsFromStatuses(selectedStatuses);
+            saveConfig();
+        }
+    }
+
+    // 根据选中的状态更新看板列
+    function updateKanbanColumnsFromStatuses(selectedStatuses: TaskStatus[]) {
+        const statusToColumnMap: Record<TaskStatus, KanbanColumn> = {
+            [TASK_STATUS.TODO]: {
+                id: 'todo',
+                title: '待办',
+                status: TASK_STATUS.TODO,
+                color: '#94a3b8',
+                icon: '',
+                order: 1
+            },
+            [TASK_STATUS.IN_PROGRESS]: {
+                id: 'in-progress',
+                title: '进行中',
+                status: TASK_STATUS.IN_PROGRESS,
+                color: '#3b82f6',
+                icon: '',
+                order: 2
+            },
+            [TASK_STATUS.REVIEW]: {
+                id: 'review',
+                title: '审核中',
+                status: TASK_STATUS.REVIEW,
+                color: '#f59e0b',
+                icon: '',
+                order: 3
+            },
+            [TASK_STATUS.DONE]: {
+                id: 'done',
+                title: '已完成',
+                status: TASK_STATUS.DONE,
+                color: '#10b981',
+                icon: '',
+                order: 4
+            },
+            [TASK_STATUS.ARCHIVED]: {
+                id: 'archived',
+                title: '已归档',
+                status: TASK_STATUS.ARCHIVED,
+                color: '#6b7280',
+                icon: '',
+                order: 5
+            }
+        };
+
+        // 生成新的看板列配置（保持 selectedStatuses 的顺序）
+        config.viewConfigs.kanban.columns = selectedStatuses
+            .map((status, index) => {
+                const col = statusToColumnMap[status];
+                if (col) {
+                    // 使用索引作为 order，保持拖拽顺序
+                    return { ...col, order: index + 1 };
+                }
+                return undefined;
+            })
+            .filter(col => col !== undefined) as KanbanColumn[];
     }
 </script>
 
@@ -1168,7 +1347,7 @@
                     on:columnCollapse={handleColumnCollapse}
                     on:dueDateChange={handleTaskDueDateChange}
                     on:priorityChange={handleTaskPriorityChange}
-                    on:archive={handleTaskArchive}
+                    on:statusChange={handleTaskStatusChange}
                 />
             {/if}
 
@@ -1201,6 +1380,8 @@
     {#if showSettingsDialog}
         <TaskSettingsDialog
             currentNotebookId={taskSettings.dailyNoteNotebookId}
+            kanbanColumns={config.viewConfigs.kanban?.columns || []}
+            quickStatusChange={taskSettings.quickStatusChange}
             on:save={handleSaveSettings}
             on:close={closeSettingsDialog}
         />

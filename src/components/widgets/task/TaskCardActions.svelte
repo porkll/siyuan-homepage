@@ -1,27 +1,30 @@
 <!--
   任务卡片操作按钮
-  包含设置截止时间、设置优先级、归档三个按钮
+  包含设置截止时间、设置优先级、状态变更三个按钮
 -->
 <script lang="ts">
     import { createEventDispatcher } from 'svelte';
-    import type { Task, TaskPriority } from '../../../types/task';
+    import type { Task, TaskPriority, TaskStatus } from '../../../types/task';
     import { onMount } from 'svelte';
-    import { Calendar, Tag, Archive } from 'lucide-svelte';
+    import { Calendar, Tag, GitBranch } from 'lucide-svelte';
+    import { TASK_STATUS } from '../../../libs/task-utils';
 
     export let task: Task;
     export let dropdownOpen = false;
+    export let quickStatusChange: TaskStatus = TASK_STATUS.ARCHIVED; // 快捷状态变更的目标状态（可配置）
 
     const dispatch = createEventDispatcher<{
         dueDateChange: Date | null;
         priorityChange: string | null;
-        archive: void;
+        statusChange: TaskStatus;
     }>();
 
     let showDatePicker = false;
     let showPrioritySelector = false;
+    let showStatusSelector = false;
 
     // 更新 dropdownOpen 状态
-    $: dropdownOpen = showDatePicker || showPrioritySelector;
+    $: dropdownOpen = showDatePicker || showPrioritySelector || showStatusSelector;
 
     // 优先级选项
     const priorityOptions: { value: TaskPriority | null; label: string; color: string }[] = [
@@ -30,6 +33,15 @@
         { value: 'medium', label: '中', color: '#eab308' },
         { value: 'high', label: '高', color: '#f97316' },
         { value: 'urgent', label: '紧急', color: '#ef4444' }
+    ];
+
+    // 状态选项（将来可配置）
+    const statusOptions: { value: TaskStatus; label: string; color: string }[] = [
+        { value: TASK_STATUS.TODO, label: '待办', color: '#94a3b8' },
+        { value: TASK_STATUS.IN_PROGRESS, label: '进行中', color: '#3b82f6' },
+        { value: TASK_STATUS.REVIEW, label: '审核中', color: '#f59e0b' },
+        { value: TASK_STATUS.DONE, label: '已完成', color: '#10b981' },
+        { value: TASK_STATUS.ARCHIVED, label: '已归档', color: '#6b7280' }
     ];
 
     // 快捷日期选项
@@ -61,7 +73,15 @@
     function togglePrioritySelector(event: MouseEvent) {
         event.stopPropagation();
         showDatePicker = false;
+        showStatusSelector = false;
         showPrioritySelector = !showPrioritySelector;
+    }
+
+    function toggleStatusSelector(event: MouseEvent) {
+        event.stopPropagation();
+        showDatePicker = false;
+        showPrioritySelector = false;
+        showStatusSelector = !showStatusSelector;
     }
 
     function selectQuickDate(option: typeof quickDateOptions[0]) {
@@ -87,9 +107,9 @@
         showPrioritySelector = false;
     }
 
-    function handleArchive(event: MouseEvent) {
-        event.stopPropagation();
-        dispatch('archive');
+    function selectStatus(status: TaskStatus) {
+        dispatch('statusChange', status);
+        showStatusSelector = false;
     }
 
     function formatDateForInput(date: Date): string {
@@ -102,9 +122,10 @@
     // 点击外部关闭弹出层
     function handleClickOutside(event: MouseEvent) {
         const target = event.target as HTMLElement;
-        if (!target.closest('.task-actions') && !target.closest('.date-picker') && !target.closest('.priority-selector')) {
+        if (!target.closest('.task-actions') && !target.closest('.date-picker') && !target.closest('.priority-selector') && !target.closest('.status-selector')) {
             showDatePicker = false;
             showPrioritySelector = false;
+            showStatusSelector = false;
         }
     }
 
@@ -184,14 +205,34 @@
         {/if}
     </div>
 
-    <!-- 归档按钮 -->
-    <button
-        class="action-btn archive-btn"
-        on:click={handleArchive}
-        title="归档任务"
-    >
-        <Archive size={12} />
-    </button>
+    <!-- 状态变更按钮 -->
+    <div class="action-wrapper">
+        <button
+            class="action-btn status-btn"
+            on:click={toggleStatusSelector}
+            title="变更状态"
+        >
+            <GitBranch size={12} />
+        </button>
+
+        {#if showStatusSelector}
+            <div class="status-selector">
+                <div class="picker-header">变更状态</div>
+                <div class="status-options">
+                    {#each statusOptions as option}
+                        <button
+                            class="status-option"
+                            class:active={task.status === option.value}
+                            on:click={() => selectStatus(option.value)}
+                        >
+                            <span class="status-dot" style:background-color={option.color}></span>
+                            <span class="status-label">{option.label}</span>
+                        </button>
+                    {/each}
+                </div>
+            </div>
+        {/if}
+    </div>
 </div>
 
 <style>
@@ -231,14 +272,15 @@
         border-color: var(--b3-theme-primary);
     }
 
-    .archive-btn:hover {
-        background: #fee2e2;
-        border-color: #ef4444;
+    .status-btn:hover {
+        background: var(--b3-theme-primary-lighter);
+        border-color: var(--b3-theme-primary);
     }
 
     /* 日期选择器 */
     .date-picker,
-    .priority-selector {
+    .priority-selector,
+    .status-selector {
         position: absolute;
         right: 0;
         top: 100%;
@@ -353,6 +395,49 @@
     }
 
     .priority-label {
+        flex: 1;
+    }
+
+    /* 状态选择器 */
+    .status-options {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .status-option {
+        padding: 6px 8px;
+        border: 1px solid var(--b3-border-color);
+        background: var(--b3-theme-background);
+        cursor: pointer;
+        border-radius: 4px;
+        font-size: 12px;
+        text-align: left;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .status-option:hover {
+        background: var(--b3-theme-primary-lighter);
+        border-color: var(--b3-theme-primary);
+    }
+
+    .status-option.active {
+        background: var(--b3-theme-primary-lighter);
+        border-color: var(--b3-theme-primary);
+        font-weight: 600;
+    }
+
+    .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+
+    .status-label {
         flex: 1;
     }
 </style>

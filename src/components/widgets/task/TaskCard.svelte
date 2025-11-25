@@ -4,7 +4,7 @@
 -->
 <script lang="ts">
     import { createEventDispatcher } from 'svelte';
-    import type { Task } from '../../../types/task';
+    import type { Task, TaskStatus } from '../../../types/task';
     import TaskCardActions from './TaskCardActions.svelte';
     import { Calendar, FileText } from 'lucide-svelte';
 
@@ -16,7 +16,7 @@
         dragStart: { task: Task; columnId: string };
         dueDateChange: { task: Task; dueDate: Date | null };
         priorityChange: { task: Task; priority: string | null };
-        archive: { task: Task };
+        statusChange: { task: Task; status: TaskStatus };
     }>();
 
     let dropdownOpen = false;
@@ -70,8 +70,8 @@
         dispatch('priorityChange', { task, priority: event.detail });
     }
 
-    function handleArchive(event: CustomEvent) {
-        dispatch('archive', { task });
+    function handleStatusChange(event: CustomEvent<TaskStatus>) {
+        dispatch('statusChange', { task, status: event.detail });
     }
 </script>
 
@@ -142,7 +142,7 @@
             bind:dropdownOpen
             on:dueDateChange={handleDueDateChange}
             on:priorityChange={handlePriorityChange}
-            on:archive={handleArchive}
+            on:statusChange={handleStatusChange}
         />
     </div>
 </div>

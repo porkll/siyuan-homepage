@@ -4,14 +4,84 @@
 <script lang="ts">
     import { createEventDispatcher, onMount } from 'svelte';
     import { fetchPost } from 'siyuan';
+    import type { TaskStatus, KanbanColumn } from '../../../types/task';
+    import { TASK_STATUS } from '../../../libs/task-utils';
 
     const dispatch = createEventDispatcher();
 
     export let currentNotebookId: string = '';
+    export let kanbanColumns: KanbanColumn[] = [];
+    export let quickStatusChange: TaskStatus = TASK_STATUS.ARCHIVED;
 
     let notebooks = [];
     let selectedNotebookId = currentNotebookId;
     let loading = true;
+
+    // 所有可用的状态选项
+    const allStatusOptions = [
+        { value: TASK_STATUS.TODO, label: '待办', color: '#94a3b8', description: '新建的任务' },
+        { value: TASK_STATUS.IN_PROGRESS, label: '进行中', color: '#3b82f6', description: '正在处理的任务' },
+        { value: TASK_STATUS.REVIEW, label: '审核中', color: '#f59e0b', description: '等待审核的任务' },
+        { value: TASK_STATUS.DONE, label: '已完成', color: '#10b981', description: '已完成的任务' },
+        { value: TASK_STATUS.ARCHIVED, label: '已归档', color: '#6b7280', description: '已归档的任务' }
+    ];
+
+    // 当前选中要显示的状态
+    let selectedStatuses: TaskStatus[] = kanbanColumns.map(col => col.status);
+    let selectedQuickStatus: TaskStatus = quickStatusChange;
+
+    // 状态顺序（基于 kanbanColumns 的顺序）
+    let selectedStatusOrder = (() => {
+        // 首先按照 kanbanColumns 的顺序排列（过滤掉未找到的状态）
+        const orderedStatuses = kanbanColumns
+            .map(col => allStatusOptions.find(opt => opt.value === col.status))
+            .filter(opt => opt !== undefined) as typeof allStatusOptions;
+        // 然后添加未在 kanbanColumns 中的状态
+        const remainingStatuses = allStatusOptions.filter(opt =>
+            !orderedStatuses.find(os => os.value === opt.value)
+        );
+        return [...orderedStatuses, ...remainingStatuses];
+    })();
+
+    // 拖拽相关
+    let draggedOption: typeof allStatusOptions[0] | null = null;
+
+    function handleDragStart(event: DragEvent, option: typeof allStatusOptions[0]) {
+        draggedOption = option;
+        if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = 'move';
+        }
+    }
+
+    function handleDragOver(event: DragEvent) {
+        event.preventDefault();
+        if (event.dataTransfer) {
+            event.dataTransfer.dropEffect = 'move';
+        }
+    }
+
+    function handleDrop(event: DragEvent, targetOption: typeof allStatusOptions[0]) {
+        event.preventDefault();
+
+        if (!draggedOption || draggedOption === targetOption) {
+            return;
+        }
+
+        const draggedIndex = selectedStatusOrder.findIndex(opt => opt.value === draggedOption.value);
+        const targetIndex = selectedStatusOrder.findIndex(opt => opt.value === targetOption.value);
+
+        if (draggedIndex === -1 || targetIndex === -1) {
+            return;
+        }
+
+        // 重新排列
+        const newOrder = [...selectedStatusOrder];
+        newOrder.splice(draggedIndex, 1);
+        newOrder.splice(targetIndex, 0, draggedOption);
+        selectedStatusOrder = newOrder;
+
+        draggedOption = null;
+    }
 
     onMount(() => {
         loadNotebooks();
@@ -35,9 +105,31 @@
         });
     }
 
+    // 切换状态选中
+    function toggleStatus(status: TaskStatus) {
+        if (selectedStatuses.includes(status)) {
+            // 至少保留一个状态
+            if (selectedStatuses.length > 1) {
+                selectedStatuses = selectedStatuses.filter(s => s !== status);
+            }
+        } else {
+            selectedStatuses = [...selectedStatuses, status];
+        }
+    }
+
     function handleSave() {
+        // 按照 selectedStatusOrder 的顺序构建 selectedStatuses
+        const selectedSet = new Set(selectedStatuses);
+        const orderedStatuses = selectedStatusOrder
+            .map(opt => opt.value)
+            .filter(status => selectedSet.has(status));
+
+        console.log('[TaskSettingsDialog] Saving with ordered statuses:', orderedStatuses);
+
         dispatch('save', {
-            notebookId: selectedNotebookId
+            notebookId: selectedNotebookId,
+            selectedStatuses: orderedStatuses,
+            quickStatusChange: selectedQuickStatus
         });
         handleClose();
     }
@@ -74,12 +166,54 @@
                     </select>
                 </div>
 
+                <!-- 看板列配置 -->
+                <div class="form-group">
+                    <label>
+                        看板列显示
+                        <span class="hint-text">选择要在看板中显示的任务状态，拖动调整顺序</span>
+                    </label>
+                    <div class="status-checkboxes">
+                        {#each selectedStatusOrder as option (option.value)}
+                            <label
+                                class="status-checkbox"
+                                draggable="true"
+                                on:dragstart={(e) => handleDragStart(e, option)}
+                                on:dragover={handleDragOver}
+                                on:drop={(e) => handleDrop(e, option)}
+                            >
+                                <span class="drag-handle">⋮⋮</span>
+                                <input
+                                    type="checkbox"
+                                    checked={selectedStatuses.includes(option.value)}
+                                    on:change={() => toggleStatus(option.value)}
+                                />
+                                <span class="status-indicator" style:background-color={option.color}></span>
+                                <span class="status-label">{option.label}</span>
+                            </label>
+                        {/each}
+                    </div>
+                </div>
+
+                <!-- 快捷状态变更配置 -->
+                <div class="form-group">
+                    <label for="quick-status-select">
+                        快捷状态变更
+                        <span class="hint-text">卡片操作按钮的默认状态（可在按钮中选择其他状态）</span>
+                    </label>
+                    <select id="quick-status-select" bind:value={selectedQuickStatus}>
+                        {#each allStatusOptions as option}
+                            <option value={option.value}>
+                                {option.label}
+                            </option>
+                        {/each}
+                    </select>
+                </div>
+
                 <div class="info-box">
                     <p>💡 提示：</p>
                     <ul>
-                        <li>新增的任务将添加到该笔记本的今日日记中</li>
-                        <li>如果今日日记不存在，会自动创建</li>
-                        <li>任务会添加到"待办"二级标题下</li>
+                        <li>新增任务将添加到该笔记本今日日记的"待办"标题下（自动创建）</li>
+                        <li>至少需要选择一个状态显示在看板中</li>
                     </ul>
                 </div>
             {/if}
@@ -282,5 +416,59 @@
     .btn-primary:hover:not(:disabled) {
         opacity: 0.9;
         transform: translateY(-1px);
+    }
+
+    /* 状态复选框样式 */
+    .status-checkboxes {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .status-checkbox {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 0;
+        cursor: move;
+        transition: opacity 0.2s;
+        user-select: none;
+    }
+
+    .status-checkbox:hover {
+        opacity: 0.8;
+    }
+
+    .drag-handle {
+        cursor: move;
+        color: var(--b3-theme-on-surface-light);
+        font-size: 14px;
+        line-height: 1;
+        opacity: 0.5;
+        flex-shrink: 0;
+    }
+
+    .status-checkbox:hover .drag-handle {
+        opacity: 1;
+    }
+
+    .status-checkbox input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        cursor: pointer;
+        flex-shrink: 0;
+        margin: 0;
+    }
+
+    .status-indicator {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+
+    .status-label {
+        font-size: 13px;
+        color: var(--b3-theme-on-surface);
     }
 </style>

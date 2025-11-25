@@ -114,8 +114,8 @@
         dispatch('priorityChange', event.detail);
     }
 
-    function handleArchive(event: CustomEvent<{ task: Task }>) {
-        dispatch('archive', event.detail);
+    function handleStatusChange(event: CustomEvent<{ task: Task; status: TaskStatus }>) {
+        dispatch('statusChange', event.detail);
     }
 </script>
 
@@ -159,7 +159,7 @@
                                         on:dragStart={handleTaskDragStart}
                                         on:dueDateChange={handleDueDateChange}
                                         on:priorityChange={handlePriorityChange}
-                                        on:archive={handleArchive}
+                                        on:statusChange={handleStatusChange}
                                     />
                                 {/each}
                             {/if}
