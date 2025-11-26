@@ -254,6 +254,7 @@
 
     // 加载任务数据
     function loadTasks() {
+        console.log('[loadTasks] 开始加载任务');
         loading = true;
         error = null;
 
@@ -261,27 +262,34 @@
             const sql = buildTaskQuery(config.filter);
             fetchPost('/api/query/sql', { stmt: sql }, (response) => {
                 // 检查组件是否已销毁
-                if (!mounted) return;
+                if (!mounted) {
+                    console.log('[loadTasks] 组件已销毁，放弃更新');
+                    return;
+                }
 
                 if (response && response.code === 0) {
+                    console.log('[loadTasks] 查询成功，任务数:', response.data.length);
                     allTasks = transformTasks(response.data);
                     updateFilteredTasks();
+                    console.log('[loadTasks] 更新完成，allTasks:', allTasks.length, 'filteredTasks:', filteredTasks.length);
 
                     // ✅ 立即显示 UI
                     loading = false;
 
                     // ✅ 异步检测并迁移数据，不阻塞 UI
                     setTimeout(() => {
+                        console.log('[loadTasks] 准备检查数据迁移');
                         checkAndMigrateTaskStatus(response.data);
                     }, 0);
                 } else {
+                    console.error('[loadTasks] 查询失败:', response?.msg);
                     error = response?.msg || '加载任务失败';
                     loading = false;
                 }
             });
         } catch (err) {
             if (!mounted) return;
-            console.error('Failed to load tasks:', err);
+            console.error('[loadTasks] 异常:', err);
             error = '网络错误，请稍后重试';
             loading = false;
         }
@@ -307,8 +315,13 @@
      * ✅ 防止资源泄漏和并发问题
      */
     function checkAndMigrateTaskStatus(blocks: TaskBlock[]) {
+        console.log(`[数据迁移] checkAndMigrateTaskStatus 被调用，blocks 数量:`, blocks?.length || 0);
+
         // ✅ 检查组件是否已销毁
-        if (!mounted || !blocks || blocks.length === 0) return;
+        if (!mounted || !blocks || blocks.length === 0) {
+            console.log(`[数据迁移] 跳过：mounted=${mounted}, blocks=${blocks?.length || 0}`);
+            return;
+        }
 
         // 防抖：配置的时间间隔内只检测一次
         const now = Date.now();
@@ -317,6 +330,7 @@
             return;
         }
 
+        console.log(`[数据迁移] 通过防抖检查，开始检测需要迁移的任务`);
         lastMigrationCheck = now;
 
         // 快速检测：只遍历一次，收集需要迁移的任务
@@ -443,7 +457,9 @@
 
         // ✅ 迁移完成后重新加载任务，确保 UI 显示最新数据
         if (mounted) {
-            console.log(`[数据迁移] 重新加载任务以更新 UI`);
+            console.log(`[数据迁移] 迁移完成，准备重新加载任务以更新 UI`);
+            console.log(`[数据迁移] 当前 allTasks 数量:`, allTasks.length);
+            console.log(`[数据迁移] 当前 filteredTasks 数量:`, filteredTasks.length);
             loadTasks();
         }
     }
@@ -1033,61 +1049,37 @@
 
             const realTaskId = await addTaskToHeading(todoHeadingId, content, priority, dueDate);
 
-            // 5. 后端成功后，用真实任务替换临时任务
-            // 重新加载任务列表以获取完整的任务数据
-            await new Promise<void>((resolve) => {
-                const sql = buildTaskQuery(config.filter);
-                fetchPost('/api/query/sql', { stmt: sql }, (response) => {
-                    if (!mounted) return;
+            // 5. 直接用真实 ID 更新临时任务（不需要查询数据库）
+            console.log('[AddTask] 用真实 ID 替换临时任务:', { tempId, realTaskId });
 
-                    if (response && response.code === 0) {
-                        console.log('[AddTask] Loaded tasks count:', response.data.length);
-                        const transformedTasks = transformTasks(response.data);
-                        console.log('[AddTask] Transformed tasks count:', transformedTasks.length);
-                        console.log('[AddTask] Current filter:', config.filter);
-
-                        // 找到新添加的任务
-                        const newTask = transformedTasks.find(t => t.id === realTaskId);
-                        console.log('[AddTask] New task found:', newTask);
-
-                        // 移除临时任务
-                        allTasks = transformedTasks;
-
-                        // 重新筛选
-                        let newFiltered = applyFilter(allTasks, config.filter);
-                        console.log('[AddTask] After filter, tasks count:', newFiltered.length);
-
-                        // 如果新任务被筛选掉了，检查是否应该强制添加
-                        if (newTask && !newFiltered.find(t => t.id === realTaskId)) {
-                            // 检查新任务的状态是否在当前看板列中显示
-                            const statusVisible = config.viewConfigs.kanban.columns
-                                .some(col => col.status === newTask.status);
-
-                            // 只有当状态在看板中显示时，才强制添加（被日期/优先级等过滤掉的情况）
-                            if (statusVisible) {
-                                console.log('[AddTask] New task filtered by date/priority/etc, force adding');
-                                newFiltered = [newTask, ...newFiltered];
-                            } else {
-                                console.log('[AddTask] New task status not visible in kanban, skipping force add');
-                            }
-                        }
-
-                        // 根据视图配置排序
-                        if (config.currentView === 'kanban' && config.viewConfigs.kanban) {
-                            const { sortBy, sortOrder } = config.viewConfigs.kanban;
-                            if (sortBy) {
-                                newFiltered = sortTasks(newFiltered, sortBy, sortOrder);
-                            }
-                        }
-
-                        filteredTasks = newFiltered;
-                        console.log('[AddTask] Final filtered tasks count:', filteredTasks.length);
-
-                        showSuccess('✅ 任务已添加到今日日记');
-                    }
-                    resolve();
-                });
+            // 更新 allTasks：把临时任务替换为真实任务
+            allTasks = allTasks.map(t => {
+                if (t.id === tempId) {
+                    return {
+                        ...t,
+                        id: realTaskId,
+                        docId: docId
+                    };
+                }
+                return t;
             });
+
+            // 更新 filteredTasks：把临时任务替换为真实任务
+            filteredTasks = filteredTasks.map(t => {
+                if (t.id === tempId) {
+                    return {
+                        ...t,
+                        id: realTaskId,
+                        docId: docId
+                    };
+                }
+                return t;
+            });
+
+            console.log('[AddTask] 任务 ID 已更新，allTasks count:', allTasks.length);
+            console.log('[AddTask] filteredTasks count:', filteredTasks.length);
+
+            showSuccess('✅ 任务已添加到今日日记');
 
         } catch (err) {
             console.error('[AddTask] Failed to add task:', err);
