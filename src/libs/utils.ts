@@ -2,6 +2,8 @@
  * 通用工具函数
  */
 
+import { fetchPost } from 'siyuan';
+
 /**
  * 生成 UUID
  */
@@ -86,4 +88,27 @@ export function isDateValue(value: any): boolean {
     }
 
     return false;
+}
+
+/**
+ * Promise 包装 fetchPost
+ * 将 SiYuan 的 callback 风格 API 转换为 Promise 风格
+ *
+ * @param url API 路径
+ * @param data 请求数据
+ * @returns Promise<response>
+ *
+ * @example
+ * const result = await fetchPostAsync('/api/query/sql', { stmt: 'SELECT * FROM blocks' });
+ */
+export function fetchPostAsync(url: string, data: any): Promise<any> {
+    return new Promise((resolve, reject) => {
+        fetchPost(url, data, (response) => {
+            if (response && response.code === 0) {
+                resolve(response);
+            } else {
+                reject(new Error(response?.msg || `Request failed: ${url}`));
+            }
+        });
+    });
 }

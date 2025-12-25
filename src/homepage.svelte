@@ -8,8 +8,10 @@
     import StatsWidget from "./components/widgets/StatsWidget.svelte";
     import TaskWidget from "./components/widgets/TaskWidget.svelte";
     import SqlExecutorWidget from "./components/widgets/SqlExecutorWidget.svelte";
+    import QuickNoteWidget from "./components/widgets/QuickNoteWidget.svelte";
     import WidgetConfigPanel from "./components/WidgetConfigPanel.svelte";
     import { generateUUID, deepClone } from '@/libs/utils';
+    import { DEFAULT_QUICK_NOTE_CONFIG } from '@/libs/quick-note-utils';
 
     export let app; // Used for future features
     export let plugin; // 插件实例，用于保存配置
@@ -78,6 +80,13 @@
                 columnOrder: '', // 列顺序，例如：'id, content, created, updated'
                 pageSize: 20 // 每页显示数量
             }
+        },
+        'quick-note': {
+            type: 'quick-note',
+            name: '快速笔记',
+            component: QuickNoteWidget,
+            defaultLayout: { colSpan: 12, rowSpan: 1 },
+            defaultConfig: DEFAULT_QUICK_NOTE_CONFIG
         }
     };
 
