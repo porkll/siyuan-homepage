@@ -6,16 +6,15 @@
     import { onMount } from 'svelte';
     import { showMessage } from 'siyuan';
     import { Settings, Send } from 'lucide-svelte';
-    import type { QuickNoteConfig } from '../../types/quick-note';
+    import type { QuickNoteConfig, FileCard } from '../../types/quick-note';
     import { deepMerge } from '../../libs/utils';
-    import { createDailyNote } from '../../api';
     import {
         DEFAULT_QUICK_NOTE_CONFIG,
-        findQuickNoteHeading,
-        createQuickNoteHeading,
-        addQuickNote
+        buildFileCardList,
+        addQuickNoteToFile
     } from '../../libs/quick-note-utils';
     import QuickNoteSettings from './quick-note/QuickNoteSettings.svelte';
+    import FileCardList from './quick-note/FileCardList.svelte';
 
     export let plugin; // 插件实例，用于保存配置
     export let widgetId: string = ''; // 组件实例 ID
@@ -30,6 +29,7 @@
     let noteContent = '';
     let isSending = false;
     let showSettings = false;
+    let fileCards: FileCard[] = [];
 
     onMount(() => {
         loadConfig();
@@ -45,8 +45,35 @@
                 config = deepMerge(DEFAULT_QUICK_NOTE_CONFIG, savedConfig);
                 console.log('[QuickNoteWidget] 配置加载成功:', config);
             }
+            // 加载文件卡片列表
+            await loadFileCards();
         } catch (error) {
             console.error('[QuickNoteWidget] 加载配置失败:', error);
+        }
+    }
+
+    /**
+     * 加载文件卡片列表
+     */
+    async function loadFileCards() {
+        try {
+            fileCards = await buildFileCardList(config);
+            console.log('[QuickNoteWidget] 文件卡片加载成功:', fileCards);
+
+            // 清理已删除文档的钉选
+            if (config.pinnedFileIds.length > 0) {
+                const validPinnedIds = fileCards
+                    .filter(card => card.isPinned && !card.isDaily)
+                    .map(card => card.id);
+
+                if (validPinnedIds.length !== config.pinnedFileIds.length) {
+                    console.log('[QuickNoteWidget] 清理已删除的钉选文档');
+                    config.pinnedFileIds = validPinnedIds;
+                    await saveConfig();
+                }
+            }
+        } catch (error) {
+            console.error('[QuickNoteWidget] 加载文件卡片失败:', error);
         }
     }
 
@@ -84,24 +111,15 @@
         isSending = true;
 
         try {
-            // 1. 创建或获取今日日记
-            const dailyNote = await createDailyNote(config.notebookId);
-            const docId = dailyNote.id;
+            // 添加笔记到选中的文件
+            await addQuickNoteToFile(config.selectedFileId, content, config);
 
-            // 2. 查找快速笔记标题
-            let headingId = await findQuickNoteHeading(docId);
-
-            // 3. 如果不存在，则创建标题
-            if (!headingId) {
-                headingId = await createQuickNoteHeading(docId, config.headingName);
-            }
-
-            // 4. 添加笔记条目
-            await addQuickNote(headingId, content);
-
-            // 5. 清空输入框并显示成功消息
+            // 清空输入框并显示成功消息
             noteContent = '';
             showMessage('笔记已添加', 2000, 'info');
+
+            // 更新文件卡片列表
+            await loadFileCards();
         } catch (error) {
             console.error('[QuickNoteWidget] 添加笔记失败:', error);
             showMessage('添加笔记失败: ' + error.message, 3000, 'error');
@@ -142,24 +160,66 @@
     /**
      * 保存设置
      */
-    function handleSaveSettings(event: CustomEvent) {
+    async function handleSaveSettings(event: CustomEvent) {
         const { notebookId, enableEnterToSend, headingName } = event.detail;
 
         config.notebookId = notebookId;
         config.enableEnterToSend = enableEnterToSend;
         config.headingName = headingName;
 
-        saveConfig();
+        await saveConfig();
         showMessage('设置已保存', 2000, 'info');
+
+        // 如果笔记本更改了，重新加载文件卡片
+        await loadFileCards();
+    }
+
+    /**
+     * 处理文件选择
+     */
+    async function handleFileSelect(event: CustomEvent) {
+        config.selectedFileId = event.detail.fileId;
+        await saveConfig();
+    }
+
+    /**
+     * 处理文件钉选/取消钉选
+     */
+    async function handleFilePin(event: CustomEvent) {
+        const { fileId, isPinned } = event.detail;
+
+        if (isPinned) {
+            // 添加到钉选列表
+            if (!config.pinnedFileIds.includes(fileId)) {
+                config.pinnedFileIds = [...config.pinnedFileIds, fileId];
+            }
+        } else {
+            // 从钉选列表移除
+            config.pinnedFileIds = config.pinnedFileIds.filter(id => id !== fileId);
+        }
+
+        await saveConfig();
+        await loadFileCards();
     }
 </script>
 
 <div class="quick-note-widget">
+    <!-- 顶部：紧凑的文件卡片栏 -->
+    {#if fileCards.length > 0}
+        <FileCardList
+            cards={fileCards}
+            selectedId={config.selectedFileId}
+            on:select={handleFileSelect}
+            on:pin={handleFilePin}
+        />
+    {/if}
+
+    <!-- 底部：输入框和按钮 -->
     <div class="widget-content">
         <textarea
             bind:value={noteContent}
             on:keydown={handleKeydown}
-            placeholder="快速记录..."
+            placeholder="输入笔记内容（支持选择目标文件）..."
             class="note-input"
             disabled={isSending}
             rows="1"
@@ -187,6 +247,7 @@
         </button>
     </div>
 
+    <!-- 设置对话框 -->
     {#if showSettings}
         <QuickNoteSettings
             {config}
@@ -200,7 +261,7 @@
     .quick-note-widget {
         height: 100%;
         display: flex;
-        align-items: center;
+        flex-direction: column;
         background: var(--b3-theme-background);
         border-radius: 8px;
         overflow: hidden;
@@ -212,7 +273,6 @@
         align-items: center;
         gap: 8px;
         padding: 8px 12px;
-        height: 100%;
     }
 
     .note-input {
