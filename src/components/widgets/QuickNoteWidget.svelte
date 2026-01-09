@@ -5,7 +5,7 @@
 <script lang="ts">
     import { onMount } from 'svelte';
     import { showMessage } from 'siyuan';
-    import { Settings, Send } from 'lucide-svelte';
+    import { Settings, Send, RefreshCw } from 'lucide-svelte';
     import type { QuickNoteConfig, FileCard } from '../../types/quick-note';
     import { deepMerge } from '../../libs/utils';
     import {
@@ -30,6 +30,7 @@
     let isSending = false;
     let showSettings = false;
     let fileCards: FileCard[] = [];
+    let isRefreshing = false;
 
     onMount(() => {
         loadConfig();
@@ -201,14 +202,43 @@
         await saveConfig();
         await loadFileCards();
     }
+
+    // 暴露刷新方法
+    export async function refresh() {
+        if (isRefreshing) return;
+
+        isRefreshing = true;
+        try {
+            await loadFileCards();
+            showMessage('已刷新', 1000, 'info');
+        } catch (error) {
+            console.error('[QuickNoteWidget] 刷新失败:', error);
+            showMessage('刷新失败', 3000, 'error');
+        } finally {
+            isRefreshing = false;
+        }
+    }
+
+    /**
+     * 内部刷新处理（按钮点击）
+     */
+    function handleRefresh() {
+        refresh();
+    }
 </script>
 
 <div class="quick-note-widget">
     <!-- 顶部：紧凑的文件卡片栏 -->
-    {#if fileCards.length > 0}
+    {#if isRefreshing}
+        <div class="file-card-loading">
+            <div class="loading-spinner"></div>
+            <span>刷新中...</span>
+        </div>
+    {:else if fileCards.length > 0}
         <FileCardList
             cards={fileCards}
             selectedId={config.selectedFileId}
+            notebookId={config.notebookId}
             on:select={handleFileSelect}
             on:pin={handleFilePin}
         />
@@ -239,6 +269,16 @@
         </button>
 
         <button
+            class="icon-btn refresh-btn"
+            class:refreshing={isRefreshing}
+            on:click={handleRefresh}
+            disabled={isRefreshing}
+            title="刷新文档列表"
+        >
+            <RefreshCw size={18} />
+        </button>
+
+        <button
             class="icon-btn settings-btn"
             on:click={openSettings}
             title="设置"
@@ -265,6 +305,27 @@
         background: var(--b3-theme-background);
         border-radius: 8px;
         overflow: hidden;
+    }
+
+    .file-card-loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--b3-border-color);
+        background: var(--b3-theme-background);
+        color: var(--b3-theme-on-surface);
+        font-size: 12px;
+    }
+
+    .loading-spinner {
+        width: 14px;
+        height: 14px;
+        border: 2px solid var(--b3-border-color);
+        border-top-color: var(--b3-theme-primary);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
     }
 
     .widget-content {
@@ -363,6 +424,25 @@
     .icon-btn:hover {
         background: var(--b3-theme-background-light);
         color: var(--b3-theme-primary);
+    }
+
+    .icon-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    /* 刷新按钮旋转动画 */
+    .refresh-btn.refreshing :global(svg) {
+        animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+        from {
+            transform: rotate(0deg);
+        }
+        to {
+            transform: rotate(360deg);
+        }
     }
 
     /* 响应式调整 */

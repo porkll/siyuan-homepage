@@ -6,11 +6,13 @@
     import { createEventDispatcher } from 'svelte';
     import { Pin, ExternalLink } from 'lucide-svelte';
     import type { FileCard } from '../../../types/quick-note';
+    import { createDailyNote } from '../../../api';
 
     const dispatch = createEventDispatcher();
 
     export let cards: FileCard[] = [];
     export let selectedId: string = 'daily';
+    export let notebookId: string = ''; // 日记笔记本 ID，用于获取今日日记
 
     /**
      * 处理选择文件
@@ -36,9 +38,19 @@
     /**
      * 处理跳转到文档
      */
-    function handleNavigate(card: FileCard, event: Event) {
+    async function handleNavigate(card: FileCard, event: Event) {
         event.stopPropagation();
-        if (card.id !== 'daily') {
+
+        if (card.isDaily) {
+            // 日记卡片：获取今日日记并跳转
+            try {
+                const dailyNote = await createDailyNote(notebookId);
+                window.open(`siyuan://blocks/${dailyNote.id}`, '_self');
+            } catch (error) {
+                console.error('跳转到今日日记失败:', error);
+            }
+        } else {
+            // 普通文档：直接跳转
             window.open(`siyuan://blocks/${card.id}`, '_self');
         }
     }
@@ -63,6 +75,17 @@
                     <span class="check-mark">✓</span>
                 {/if}
 
+                <!-- 跳转按钮：所有卡片都显示 -->
+                <button
+                    class="navigate-btn"
+                    class:navigate-only={card.isDaily}
+                    on:click={(e) => handleNavigate(card, e)}
+                    title={card.isDaily ? '跳转到今日日记' : '跳转到文档'}
+                >
+                    <ExternalLink size={10} />
+                </button>
+
+                <!-- 钉选按钮：仅非日记卡片显示 -->
                 {#if !card.isDaily}
                     <button
                         class="pin-btn"
@@ -71,14 +94,6 @@
                         title={card.isPinned ? '取消钉选' : '钉选'}
                     >
                         <Pin size={10} fill={card.isPinned ? 'currentColor' : 'none'} />
-                    </button>
-
-                    <button
-                        class="navigate-btn"
-                        on:click={(e) => handleNavigate(card, e)}
-                        title="跳转到文档"
-                    >
-                        <ExternalLink size={10} />
                     </button>
                 {/if}
             </div>
@@ -197,6 +212,11 @@
         right: 20px;
         color: var(--b3-theme-primary);
         background: var(--b3-theme-surface);
+    }
+
+    /* 日记卡片只有跳转按钮，位置调整到最右边 */
+    .navigate-btn.navigate-only {
+        right: 2px;
     }
 
     .file-card:hover .pin-btn,
