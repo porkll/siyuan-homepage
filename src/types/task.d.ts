@@ -35,7 +35,25 @@ export type TaskViewType = 'kanban' | 'list' | 'calendar' | 'timeline';
 /**
  * 任务状态（可自定义扩展）
  */
-export type TaskStatus = 'todo' | 'in-progress' | 'review' | 'done' | 'archived';
+export type TaskStatus = string;
+
+/**
+ * 任务状态定义
+ */
+export interface TaskStatusDefinition {
+    id: string;              // 存储值（唯一标识，不可变）
+    label: string;           // 展示值（支持自定义）
+    isCompleted: boolean;    // 是否为完成态（影响 markdown checkbox）
+}
+
+/**
+ * 任务状态配置
+ */
+export interface TaskStatusConfig {
+    statuses: TaskStatusDefinition[];     // 所有状态定义（数组顺序即为显示顺序）
+    visibleColumns: string[];             // 看板中显示的列（状态ID数组）
+    defaultStatus: string;                // 默认状态 ID
+}
 
 /**
  * 任务优先级
@@ -226,6 +244,9 @@ export interface TaskWidgetConfig {
 
     // 当前筛选器
     filter: TaskFilter;
+
+    // 状态配置
+    statusConfig?: TaskStatusConfig;
 
     // UI 偏好
     preferences?: {

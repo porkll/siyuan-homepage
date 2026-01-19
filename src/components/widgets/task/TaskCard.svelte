@@ -4,12 +4,13 @@
 -->
 <script lang="ts">
     import { createEventDispatcher } from 'svelte';
-    import type { Task, TaskStatus } from '../../../types/task';
+    import type { Task, TaskStatus, TaskStatusConfig } from '../../../types/task';
     import TaskCardActions from './TaskCardActions.svelte';
     import { Calendar, FileText } from 'lucide-svelte';
 
     export let task: Task;
     export let columnId: string;
+    export let statusConfig: TaskStatusConfig | undefined = undefined;
 
     const dispatch = createEventDispatcher<{
         taskClick: Task;
@@ -144,6 +145,7 @@
         <!-- 操作按钮 -->
         <TaskCardActions
             {task}
+            {statusConfig}
             bind:dropdownOpen
             on:dueDateChange={handleDueDateChange}
             on:priorityChange={handlePriorityChange}

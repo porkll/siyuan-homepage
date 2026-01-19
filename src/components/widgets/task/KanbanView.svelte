@@ -4,12 +4,13 @@
 -->
 <script lang="ts">
     import { createEventDispatcher } from 'svelte';
-    import type { Task, KanbanColumn, KanbanViewConfig } from '../../../types/task';
+    import type { Task, KanbanColumn, KanbanViewConfig, TaskStatusConfig } from '../../../types/task';
     import { groupByStatus } from '../../../libs/task-utils';
     import TaskCard from './TaskCard.svelte';
 
     export let tasks: Task[] = [];
     export let config: KanbanViewConfig;
+    export let statusConfig: TaskStatusConfig | undefined = undefined;
 
     const dispatch = createEventDispatcher<{
         taskClick: Task;
@@ -160,6 +161,7 @@
                                 {#each columnTasks as task (task.id)}
                                     <TaskCard
                                         {task}
+                                        {statusConfig}
                                         columnId={column.id}
                                         on:taskClick={handleTaskClick}
                                         on:dragStart={handleTaskDragStart}

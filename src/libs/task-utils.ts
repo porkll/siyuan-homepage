@@ -10,7 +10,9 @@ import type {
     TaskFilter,
     QuickFilterType,
     Notebook,
-    SqlResponse
+    SqlResponse,
+    TaskStatusDefinition,
+    TaskStatusConfig
 } from '../types/task';
 
 // ==================== 配置 ====================
@@ -66,18 +68,27 @@ export function parseTaskStatus(markdown: string): { completed: boolean; status:
 
 /**
  * 从自定义属性中提取任务状态
+ * 如果状态不在已定义的状态中，则归类为"其他"状态
  */
-export function extractStatus(customAttrs: Record<string, any>, markdown: string): { completed: boolean; status: TaskStatus } {
+export function extractStatus(customAttrs: Record<string, any>, markdown: string, validStatuses?: string[]): { completed: boolean; status: TaskStatus } {
     const customStatus = customAttrs[TASK_ATTRS.STATUS];
 
-    // 所有有效的状态值（使用配置常量）
-    const validStatuses = Object.values(TASK_STATUS);
+    // 默认有效状态（如果未提供）
+    const defaultValidStatuses = Object.values(TASK_STATUS);
+    const statusesToCheck = validStatuses || defaultValidStatuses;
 
-    // 如果有自定义状态属性，使用自定义状态
-    if (customStatus && validStatuses.includes(customStatus)) {
-        const status = customStatus as TaskStatus;
-        const completed = status === TASK_STATUS.DONE || status === TASK_STATUS.ARCHIVED;
-        return { completed, status };
+    // 如果有自定义状态属性
+    if (customStatus) {
+        // 检查状态是否有效
+        if (statusesToCheck.includes(customStatus)) {
+            const status = customStatus as TaskStatus;
+            const completed = status === TASK_STATUS.DONE || status === TASK_STATUS.ARCHIVED;
+            return { completed, status };
+        } else {
+            // 状态不在定义中，归类为"其他"
+            const completed = markdown.includes('[x]') || markdown.includes('[X]');
+            return { completed, status: '__other__' };
+        }
     }
 
     // 否则从 markdown 解析
@@ -539,3 +550,131 @@ export function buildTaskQuery(filter?: TaskFilter): string {
 
     return sql;
 }
+
+// ==================== 状态配置管理 ====================
+
+/**
+ * 默认任务状态配置
+ */
+export const DEFAULT_TASK_STATUSES: TaskStatusDefinition[] = [
+    { id: 'todo', label: '待办', isCompleted: false },
+    { id: 'in-progress', label: '进行中', isCompleted: false },
+    { id: 'review', label: '审核中', isCompleted: false },
+    { id: 'done', label: '已完成', isCompleted: true },
+    { id: 'archived', label: '已归档', isCompleted: true },
+    { id: '__other__', label: '其他', isCompleted: false },  // 特殊状态，用于未定义的状态
+];
+
+/**
+ * 默认任务状态配置（完整）
+ */
+export const DEFAULT_STATUS_CONFIG: TaskStatusConfig = {
+    statuses: DEFAULT_TASK_STATUSES,
+    visibleColumns: ['todo', 'in-progress', 'review', 'done'],
+    defaultStatus: 'todo',
+};
+
+/**
+ * 获取状态配置（如果没有配置则返回默认配置）
+ */
+export function getStatusConfig(config?: TaskStatusConfig): TaskStatusConfig {
+    if (!config || !config.statuses || config.statuses.length === 0) {
+        return DEFAULT_STATUS_CONFIG;
+    }
+    return config;
+}
+
+/**
+ * 根据状态 ID 获取状态定义
+ */
+export function getStatusDefinition(
+    statusId: string,
+    config?: TaskStatusConfig
+): TaskStatusDefinition | undefined {
+    const statusConfig = getStatusConfig(config);
+    return statusConfig.statuses.find(s => s.id === statusId);
+}
+
+/**
+ * 获取状态的展示标签
+ */
+export function getStatusLabel(
+    statusId: string,
+    config?: TaskStatusConfig
+): string {
+    const def = getStatusDefinition(statusId, config);
+    return def ? def.label : statusId;
+}
+
+/**
+ * 检查状态是否为完成态
+ */
+export function isStatusCompleted(
+    statusId: string,
+    config?: TaskStatusConfig
+): boolean {
+    const def = getStatusDefinition(statusId, config);
+    return def ? def.isCompleted : false;
+}
+
+/**
+ * 获取所有可见的状态列
+ */
+export function getVisibleStatuses(config?: TaskStatusConfig): TaskStatusDefinition[] {
+    const statusConfig = getStatusConfig(config);
+    return statusConfig.statuses.filter(s =>
+        statusConfig.visibleColumns.includes(s.id)
+    );
+}
+
+/**
+ * 验证状态配置的有效性
+ */
+export function validateStatusConfig(config: TaskStatusConfig): {
+    valid: boolean;
+    errors: string[];
+} {
+    const errors: string[] = [];
+
+    // 检查是否有状态定义
+    if (!config.statuses || config.statuses.length === 0) {
+        errors.push('至少需要一个状态定义');
+    }
+
+    // 检查状态 ID 唯一性
+    const ids = new Set<string>();
+    for (const status of config.statuses) {
+        if (!status.id) {
+            errors.push('状态 ID 不能为空');
+        } else if (ids.has(status.id)) {
+            errors.push(`状态 ID "${status.id}" 重复`);
+        } else {
+            ids.add(status.id);
+        }
+
+        // 检查标签
+        if (!status.label) {
+            errors.push(`状态 "${status.id}" 缺少展示标签`);
+        }
+    }
+
+    // 检查默认状态是否存在
+    if (!config.defaultStatus) {
+        errors.push('必须指定默认状态');
+    } else if (!ids.has(config.defaultStatus)) {
+        errors.push(`默认状态 "${config.defaultStatus}" 不存在`);
+    }
+
+    // 检查可见列中的状态是否都存在
+    for (const colId of config.visibleColumns) {
+        if (!ids.has(colId)) {
+            errors.push(`可见列中的状态 "${colId}" 不存在`);
+        }
+    }
+
+    return {
+        valid: errors.length === 0,
+        errors
+    };
+}
+

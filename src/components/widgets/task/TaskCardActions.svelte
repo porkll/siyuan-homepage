@@ -4,14 +4,15 @@
 -->
 <script lang="ts">
     import { createEventDispatcher } from 'svelte';
-    import type { Task, TaskPriority, TaskStatus } from '../../../types/task';
+    import type { Task, TaskPriority, TaskStatus, TaskStatusConfig } from '../../../types/task';
     import { onMount } from 'svelte';
     import { Calendar, Tag, GitBranch, EyeOff } from 'lucide-svelte';
-    import { TASK_STATUS } from '../../../libs/task-utils';
+    import { getStatusConfig } from '../../../libs/task-utils';
 
     export let task: Task;
     export let dropdownOpen = false;
-    export let quickStatusChange: TaskStatus = TASK_STATUS.ARCHIVED; // 快捷状态变更的目标状态（可配置）
+    export let quickStatusChange: TaskStatus = 'archived'; // 快捷状态变更的目标状态（可配置）
+    export let statusConfig: TaskStatusConfig | undefined = undefined;
 
     const dispatch = createEventDispatcher<{
         dueDateChange: Date | null;
@@ -36,14 +37,15 @@
         { value: 'urgent', label: '紧急', color: '#ef4444' }
     ];
 
-    // 状态选项（将来可配置）
-    const statusOptions: { value: TaskStatus; label: string; color: string }[] = [
-        { value: TASK_STATUS.TODO, label: '待办', color: '#94a3b8' },
-        { value: TASK_STATUS.IN_PROGRESS, label: '进行中', color: '#3b82f6' },
-        { value: TASK_STATUS.REVIEW, label: '审核中', color: '#f59e0b' },
-        { value: TASK_STATUS.DONE, label: '已完成', color: '#10b981' },
-        { value: TASK_STATUS.ARCHIVED, label: '已归档', color: '#6b7280' }
-    ];
+    // 从状态配置生成状态选项
+    $: statusOptions = (() => {
+        const config = getStatusConfig(statusConfig);
+        return config.statuses.map(status => ({
+            value: status.id,
+            label: status.label,
+            color: '#94a3b8' // 可以后续扩展支持自定义颜色
+        }));
+    })();
 
     // 快捷日期选项
     const quickDateOptions = [

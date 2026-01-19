@@ -16,7 +16,8 @@
         KanbanColumn,
         TaskStatus,
         TaskBlock,
-        SqlResponse
+        SqlResponse,
+        TaskStatusConfig
     } from '../../types/task';
     import {
         transformTasks,
@@ -28,7 +29,10 @@
         parseTaskStatus,
         TASK_ATTRS,
         TASK_STATUS,
-        DEFAULT_TASK_STATUS
+        DEFAULT_TASK_STATUS,
+        getStatusConfig,
+        getStatusLabel,
+        isStatusCompleted
     } from '../../libs/task-utils';
     import { deepMerge } from '../../libs/utils';
     import { setBlockAttrs } from '../../api';
@@ -38,6 +42,7 @@
     import PriorityFilter from './task/PriorityFilter.svelte';
     import AddTaskDialog from './task/AddTaskDialog.svelte';
     import TaskSettingsDialog from './task/TaskSettingsDialog.svelte';
+    import { DEFAULT_STATUS_CONFIG } from '../../libs/task-utils';
 
     // ==================== 数据迁移配置常量 ====================
     const MIGRATION_DEBOUNCE_MS = 2 * 60 * 1000;  // 防抖间隔：2分钟
@@ -110,6 +115,7 @@
             },
             showCompleted: true
         },
+        statusConfig: DEFAULT_STATUS_CONFIG,
         preferences: {
             compactMode: false,
             showStats: true,
@@ -177,6 +183,16 @@
                 console.log('[TaskWidget] Config loaded:', {
                     kanbanColumns: config.viewConfigs.kanban.columns.map(c => ({ id: c.id, status: c.status, order: c.order }))
                 });
+
+                // 确保"其他"状态存在（向后兼容）
+                if (config.statusConfig && !config.statusConfig.statuses.some(s => s.id === '__other__')) {
+                    config.statusConfig.statuses.push({
+                        id: '__other__',
+                        label: '其他',
+                        isCompleted: false
+                    });
+                    console.log('[TaskWidget] Added __other__ status for backward compatibility');
+                }
 
                 // 将日期字符串转换回 Date 对象
                 if (config.filter.dateFilters?.created) {
@@ -270,6 +286,16 @@
                 if (response && response.code === 0) {
                     console.log('[loadTasks] 查询成功，任务数:', response.data.length);
                     allTasks = transformTasks(response.data);
+
+                    // 将未定义状态的任务归类为"其他"
+                    const definedStatusIds = config.statusConfig?.statuses.map(s => s.id) || [];
+                    allTasks = allTasks.map(task => {
+                        if (!definedStatusIds.includes(task.status)) {
+                            return { ...task, status: '__other__' };
+                        }
+                        return task;
+                    });
+
                     updateFilteredTasks();
                     console.log('[loadTasks] 更新完成，allTasks:', allTasks.length, 'filteredTasks:', filteredTasks.length);
 
@@ -1135,78 +1161,251 @@
 
     // 保存设置
     function handleSaveSettings(event: CustomEvent) {
-        const { notebookId, selectedStatuses, quickStatusChange } = event.detail;
+        const { notebookId, statusConfig } = event.detail;
 
-        console.log('[TaskWidget] Saving settings:', { selectedStatuses, quickStatusChange });
+        console.log('[TaskWidget] Saving settings:', { notebookId, statusConfig });
 
+        // 保存笔记本设置
         taskSettings.dailyNoteNotebookId = notebookId;
-        taskSettings.quickStatusChange = quickStatusChange;
         saveTaskSettings();
 
-        // 根据选中的状态更新看板列配置
-        if (selectedStatuses && selectedStatuses.length > 0) {
-            console.log('[TaskWidget] Updating kanban columns from statuses:', selectedStatuses);
-            updateKanbanColumnsFromStatuses(selectedStatuses);
+        // 保存状态配置
+        if (statusConfig) {
+            config.statusConfig = statusConfig;
+
+            // 从状态配置更新看板列
+            updateKanbanColumnsFromStatusConfig(statusConfig);
+
             saveConfig();
         }
     }
 
-    // 根据选中的状态更新看板列
-    function updateKanbanColumnsFromStatuses(selectedStatuses: TaskStatus[]) {
-        const statusToColumnMap: Record<TaskStatus, KanbanColumn> = {
-            [TASK_STATUS.TODO]: {
-                id: 'todo',
-                title: '待办',
-                status: TASK_STATUS.TODO,
-                color: '#94a3b8',
-                icon: '',
-                order: 1
-            },
-            [TASK_STATUS.IN_PROGRESS]: {
-                id: 'in-progress',
-                title: '进行中',
-                status: TASK_STATUS.IN_PROGRESS,
-                color: '#3b82f6',
-                icon: '',
-                order: 2
-            },
-            [TASK_STATUS.REVIEW]: {
-                id: 'review',
-                title: '审核中',
-                status: TASK_STATUS.REVIEW,
-                color: '#f59e0b',
-                icon: '',
-                order: 3
-            },
-            [TASK_STATUS.DONE]: {
-                id: 'done',
-                title: '已完成',
-                status: TASK_STATUS.DONE,
-                color: '#10b981',
-                icon: '',
-                order: 4
-            },
-            [TASK_STATUS.ARCHIVED]: {
-                id: 'archived',
-                title: '已归档',
-                status: TASK_STATUS.ARCHIVED,
-                color: '#6b7280',
-                icon: '',
-                order: 5
-            }
+    // 从状态配置更新看板列
+    function updateKanbanColumnsFromStatusConfig(statusConfig: TaskStatusConfig) {
+        const visibleStatuses = statusConfig.statuses.filter(s =>
+            statusConfig.visibleColumns.includes(s.id)
+        );
+
+        config.viewConfigs.kanban = config.viewConfigs.kanban || {
+            columns: [],
+            showEmptyColumns: true,
+            groupBy: 'status',
+            sortBy: 'created',
+            sortOrder: 'desc'
         };
 
-        // 生成新的看板列配置（保持 selectedStatuses 的顺序）
-        config.viewConfigs.kanban.columns = selectedStatuses
-            .map((status, index) => {
-                const col = statusToColumnMap[status];
-                if (col) {
-                    // 使用索引作为 order，保持拖拽顺序
-                    return { ...col, order: index + 1 };
+        config.viewConfigs.kanban.columns = visibleStatuses.map((status, index) => ({
+            id: status.id,
+            title: status.label,
+            status: status.id,
+            color: '#94a3b8', // 可以后续扩展支持自定义颜色
+            icon: '',
+            order: index + 1
+        }));
+
+        console.log('[TaskWidget] Updated kanban columns:', config.viewConfigs.kanban.columns);
+    }
+
+    // 批量修改状态处理
+    async function handleBatchStatusChange(event: CustomEvent) {
+        const { fromStatus, toStatus, tasks } = event.detail;
+
+        console.log('[TaskWidget] Batch status change:', { fromStatus, toStatus, count: tasks.length });
+
+        if (tasks.length === 0) {
+            showError('没有找到需要修改的任务');
+            return;
+        }
+
+        // 检查是否需要更新 markdown（状态改变是否影响 checkbox）
+        const toStatusDef = config.statusConfig?.statuses.find(s => s.id === toStatus);
+        const needUpdateCheckbox = toStatusDef ? toStatusDef.isCompleted : false;
+
+        // 如果批量较大且需要更新 markdown，给出警告
+        if (tasks.length > 50 && needUpdateCheckbox) {
+            if (!confirm(`即将修改 ${tasks.length} 个任务的状态（每个任务需要2个API请求），这可能需要较长时间。是否继续？`)) {
+                return;
+            }
+        }
+
+        // 记录成功和失败的任务
+        let successTasks: Task[] = [];
+        let failedTasks: Task[] = [];
+
+        try {
+            // 显示处理中的提示
+            loading = true;
+
+            // 根据任务数量动态调整批次大小
+            const batchSize = tasks.length > 100 ? 5 : 10; // 超过100个任务时减小批次
+            const batchDelay = tasks.length > 100 ? 500 : 300; // 超过100个任务时增加延迟
+
+            console.log(`[TaskWidget] 第1轮处理: ${tasks.length} 个任务，批次大小 ${batchSize}，延迟 ${batchDelay}ms`);
+
+            // 第一轮：批量更新任务状态
+            for (let i = 0; i < tasks.length; i += batchSize) {
+                const batch = tasks.slice(i, Math.min(i + batchSize, tasks.length));
+
+                console.log(`[TaskWidget] 处理批次 ${Math.floor(i / batchSize) + 1}/${Math.ceil(tasks.length / batchSize)}`);
+
+                // 使用 Promise.allSettled 而不是 Promise.all，这样单个失败不会中断整个批次
+                const results = await Promise.allSettled(
+                    batch.map(task => updateTaskWithPromise(task, { status: toStatus }))
+                );
+
+                // 收集成功和失败的任务
+                results.forEach((result, index) => {
+                    const task = batch[index];
+                    if (result.status === 'fulfilled') {
+                        successTasks.push(task);
+                    } else {
+                        failedTasks.push(task);
+                        console.error(`[TaskWidget] 任务 ${task.id} 失败:`, result.reason);
+                    }
+                });
+
+                // 短暂延迟，避免请求过快
+                if (i + batchSize < tasks.length) {
+                    await new Promise(resolve => setTimeout(resolve, batchDelay));
                 }
-                return undefined;
-            })
-            .filter(col => col !== undefined) as KanbanColumn[];
+            }
+
+            // 第二轮：重试失败的任务（只重试一次）
+            if (failedTasks.length > 0) {
+                console.log(`[TaskWidget] 第2轮重试: ${failedTasks.length} 个失败任务`);
+
+                const retryTasks = [...failedTasks];
+                failedTasks = []; // 清空失败列表，准备收集重试后仍失败的任务
+
+                // 重试时使用更小的批次和更长的延迟
+                const retryBatchSize = 3;
+                const retryDelay = 800;
+
+                for (let i = 0; i < retryTasks.length; i += retryBatchSize) {
+                    const batch = retryTasks.slice(i, Math.min(i + retryBatchSize, retryTasks.length));
+
+                    console.log(`[TaskWidget] 重试批次 ${Math.floor(i / retryBatchSize) + 1}/${Math.ceil(retryTasks.length / retryBatchSize)}`);
+
+                    const results = await Promise.allSettled(
+                        batch.map(task => updateTaskWithPromise(task, { status: toStatus }))
+                    );
+
+                    results.forEach((result, index) => {
+                        const task = batch[index];
+                        if (result.status === 'fulfilled') {
+                            successTasks.push(task);
+                            console.log(`[TaskWidget] 重试成功: ${task.id}`);
+                        } else {
+                            failedTasks.push(task);
+                            console.error(`[TaskWidget] 重试仍失败: ${task.id}`, result.reason);
+                        }
+                    });
+
+                    // 重试时使用更长的延迟
+                    if (i + retryBatchSize < retryTasks.length) {
+                        await new Promise(resolve => setTimeout(resolve, retryDelay));
+                    }
+                }
+            }
+
+            // 更新本地显示（已通过乐观更新完成，只需刷新筛选）
+            updateFilteredTasks();
+
+            // 显示结果
+            if (failedTasks.length === 0) {
+                showSuccess(`✅ 成功修改 ${successTasks.length} 个任务`);
+                console.log(`[TaskWidget] 批量操作完成: 成功 ${successTasks.length} 个`);
+            } else {
+                const message = `部分完成: 成功 ${successTasks.length} 个，失败 ${failedTasks.length} 个（详见控制台）`;
+                showError(message);
+                console.error('[TaskWidget] 最终失败的任务:', failedTasks.map(t => ({ id: t.id, content: t.content })));
+            }
+
+        } catch (error) {
+            console.error('[TaskWidget] Batch status change failed:', error);
+            showError('批量修改出现异常');
+        } finally {
+            loading = false;
+        }
+    }
+
+    /**
+     * Promise 版本的任务更新（用于批量操作）
+     * 不做乐观更新，由调用方统一处理
+     */
+    function updateTaskWithPromise(task: Task, updates: TaskUpdate): Promise<void> {
+        return new Promise((resolve, reject) => {
+            try {
+                // === 步骤1: 计算新状态和需要更新的内容 ===
+                const newState = computeNewTaskState(task, updates);
+
+                // === 步骤2: 乐观更新本地（批量操作时每个任务都更新） ===
+                applyOptimisticUpdate(task, newState);
+
+                // === 步骤3: 同步到后端 ===
+                syncTaskToBackendWithPromise(task, newState)
+                    .then(() => resolve())
+                    .catch((err) => {
+                        // 如果后端失败，回滚本地状态
+                        console.error(`[TaskWidget] Failed to sync task ${task.id}, will not rollback optimistic update`);
+                        reject(err);
+                    });
+
+            } catch (err) {
+                console.error('Failed to update task:', err);
+                reject(err);
+            }
+        });
+    }
+
+    /**
+     * Promise 版本的后端同步（用于批量操作）
+     */
+    function syncTaskToBackendWithPromise(task: Task, newState: any): Promise<void> {
+        return new Promise((resolve, reject) => {
+            // 如果需要更新 markdown，先更新它（因为 updateBlock 会清除属性）
+            if (newState.needUpdateMarkdown) {
+                fetchPost('/api/block/updateBlock', {
+                    id: task.id,
+                    dataType: 'markdown',
+                    data: newState.newMarkdown
+                }, (response) => {
+                    if (response && response.code === 0) {
+                        // markdown 更新成功后，设置所有属性
+                        setTaskAttributesAPIWithPromise(task.id, newState.attrs)
+                            .then(() => resolve())
+                            .catch((err) => reject(err));
+                    } else {
+                        console.error('Failed to update markdown:', response);
+                        reject(new Error('更新 Markdown 失败'));
+                    }
+                });
+            } else {
+                // 不需要更新 markdown，直接设置属性
+                setTaskAttributesAPIWithPromise(task.id, newState.attrs)
+                    .then(() => resolve())
+                    .catch((err) => reject(err));
+            }
+        });
+    }
+
+    /**
+     * Promise 版本的属性设置 API（用于批量操作）
+     */
+    function setTaskAttributesAPIWithPromise(taskId: string, attrs: Record<string, string>): Promise<void> {
+        return new Promise((resolve, reject) => {
+            fetchPost('/api/attr/setBlockAttrs', {
+                id: taskId,
+                attrs: attrs
+            }, (response) => {
+                if (response && response.code === 0) {
+                    resolve();
+                } else {
+                    console.error('Failed to set attributes:', response);
+                    reject(new Error('设置属性失败'));
+                }
+            });
+        });
     }
 </script>
 
@@ -1355,6 +1554,7 @@
                 <KanbanView
                     tasks={filteredTasks}
                     config={config.viewConfigs.kanban}
+                    statusConfig={config.statusConfig}
                     on:taskClick={handleTaskClick}
                     on:taskMove={handleTaskMove}
                     on:columnCollapse={handleColumnCollapse}
@@ -1394,9 +1594,10 @@
     {#if showSettingsDialog}
         <TaskSettingsDialog
             currentNotebookId={taskSettings.dailyNoteNotebookId}
-            kanbanColumns={config.viewConfigs.kanban?.columns || []}
-            quickStatusChange={taskSettings.quickStatusChange}
+            statusConfig={config.statusConfig}
+            tasks={allTasks}
             on:save={handleSaveSettings}
+            on:batchStatusChange={handleBatchStatusChange}
             on:close={closeSettingsDialog}
         />
     {/if}
