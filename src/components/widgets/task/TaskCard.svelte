@@ -17,6 +17,7 @@
         dueDateChange: { task: Task; dueDate: Date | null };
         priorityChange: { task: Task; priority: string | null };
         statusChange: { task: Task; status: TaskStatus };
+        excludeFromManagement: { task: Task };
     }>();
 
     let dropdownOpen = false;
@@ -72,6 +73,10 @@
 
     function handleStatusChange(event: CustomEvent<TaskStatus>) {
         dispatch('statusChange', { task, status: event.detail });
+    }
+
+    function handleExcludeFromManagement() {
+        dispatch('excludeFromManagement', { task });
     }
 </script>
 
@@ -143,6 +148,7 @@
             on:dueDateChange={handleDueDateChange}
             on:priorityChange={handlePriorityChange}
             on:statusChange={handleStatusChange}
+            on:excludeFromManagement={handleExcludeFromManagement}
         />
     </div>
 </div>

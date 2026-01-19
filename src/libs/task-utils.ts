@@ -25,6 +25,7 @@ export const TASK_ATTRS = {
     COMPLETED_TIME: 'custom-task-completed-time',
     ARCHIVED_TIME: 'custom-task-archived-time',
     DAILY_TODO_HEADING: 'custom-daily-todo',
+    EXCLUDE_FROM_MANAGEMENT: 'custom-task-exclude', // 排除任务管理
 } as const;
 
 /**
@@ -514,6 +515,14 @@ export function calculateStats(tasks: Task[]) {
  */
 export function buildTaskQuery(filter?: TaskFilter): string {
     let sql = "SELECT * FROM blocks WHERE type = 'i' AND subtype = 't'";
+
+    // 排除带有 EXCLUDE_FROM_MANAGEMENT 属性的任务
+    sql += ` AND id NOT IN (
+        SELECT block_id
+        FROM attributes
+        WHERE name = '${TASK_ATTRS.EXCLUDE_FROM_MANAGEMENT}'
+          AND value = 'true'
+    )`;
 
     // 笔记本筛选
     if (filter?.notebooks?.enabled && filter.notebooks.notebookIds.length > 0) {

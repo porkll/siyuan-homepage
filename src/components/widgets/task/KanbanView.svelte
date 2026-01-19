@@ -17,6 +17,8 @@
         columnCollapse: { columnId: string; collapsed: boolean };
         dueDateChange: { task: Task; dueDate: Date | null };
         priorityChange: { task: Task; priority: string | null };
+        statusChange: { task: Task; status: TaskStatus };
+        excludeFromManagement: { task: Task };
         archive: { task: Task };
     }>();
 
@@ -117,6 +119,10 @@
     function handleStatusChange(event: CustomEvent<{ task: Task; status: TaskStatus }>) {
         dispatch('statusChange', event.detail);
     }
+
+    function handleExcludeFromManagement(event: CustomEvent<{ task: Task }>) {
+        dispatch('excludeFromManagement', event.detail);
+    }
 </script>
 
 <div class="kanban-view" bind:clientWidth={containerWidth}>
@@ -160,6 +166,7 @@
                                         on:dueDateChange={handleDueDateChange}
                                         on:priorityChange={handlePriorityChange}
                                         on:statusChange={handleStatusChange}
+                                        on:excludeFromManagement={handleExcludeFromManagement}
                                     />
                                 {/each}
                             {/if}

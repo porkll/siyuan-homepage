@@ -852,6 +852,27 @@
         updateTask(task, { status });
     }
 
+    // 处理任务排除（不纳入管理范围）
+    async function handleTaskExcludeFromManagement(event: CustomEvent) {
+        const { task } = event.detail;
+
+        try {
+            // 先调用 API 设置排除属性
+            await setBlockAttrs(task.id, {
+                [TASK_ATTRS.EXCLUDE_FROM_MANAGEMENT]: 'true'
+            });
+
+            // API 成功后，从本地列表中移除该任务
+            allTasks = allTasks.filter(t => t.id !== task.id);
+            filteredTasks = filteredTasks.filter(t => t.id !== task.id);
+
+            showSuccess('✅ 任务已排除，不再纳入管理范围');
+        } catch (err) {
+            console.error('Failed to exclude task:', err);
+            showError('❌ 操作失败，请重试');
+        }
+    }
+
     // ==================== 工具函数 ====================
 
     /**
@@ -1340,6 +1361,7 @@
                     on:dueDateChange={handleTaskDueDateChange}
                     on:priorityChange={handleTaskPriorityChange}
                     on:statusChange={handleTaskStatusChange}
+                    on:excludeFromManagement={handleTaskExcludeFromManagement}
                 />
             {/if}
 

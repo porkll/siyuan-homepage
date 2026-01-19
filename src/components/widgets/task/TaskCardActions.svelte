@@ -6,7 +6,7 @@
     import { createEventDispatcher } from 'svelte';
     import type { Task, TaskPriority, TaskStatus } from '../../../types/task';
     import { onMount } from 'svelte';
-    import { Calendar, Tag, GitBranch } from 'lucide-svelte';
+    import { Calendar, Tag, GitBranch, EyeOff } from 'lucide-svelte';
     import { TASK_STATUS } from '../../../libs/task-utils';
 
     export let task: Task;
@@ -17,6 +17,7 @@
         dueDateChange: Date | null;
         priorityChange: string | null;
         statusChange: TaskStatus;
+        excludeFromManagement: void;
     }>();
 
     let showDatePicker = false;
@@ -110,6 +111,11 @@
     function selectStatus(status: TaskStatus) {
         dispatch('statusChange', status);
         showStatusSelector = false;
+    }
+
+    function handleExcludeFromManagement(event: MouseEvent) {
+        event.stopPropagation();
+        dispatch('excludeFromManagement');
     }
 
     function formatDateForInput(date: Date): string {
@@ -233,6 +239,17 @@
             </div>
         {/if}
     </div>
+
+    <!-- 排除任务管理按钮 -->
+    <div class="action-wrapper">
+        <button
+            class="action-btn exclude-btn"
+            on:click={handleExcludeFromManagement}
+            title="不纳入任务管理"
+        >
+            <EyeOff size={12} />
+        </button>
+    </div>
 </div>
 
 <style>
@@ -275,6 +292,12 @@
     .status-btn:hover {
         background: var(--b3-theme-primary-lighter);
         border-color: var(--b3-theme-primary);
+    }
+
+    .exclude-btn:hover {
+        background: #fee2e2;
+        border-color: #ef4444;
+        color: #ef4444;
     }
 
     /* 日期选择器 */
