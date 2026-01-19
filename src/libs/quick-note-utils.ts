@@ -14,7 +14,9 @@ export const QUICK_NOTE_ATTRS = {
     /** 快速笔记标题标记 */
     HEADING: 'custom-daily-quick-note',
     /** 快速笔记条目标记 */
-    NOTE: 'custom-quick-note'
+    NOTE: 'custom-quick-note',
+    /** 快速笔记创建时间 */
+    CREATED: 'custom-quick-note-created'
 } as const;
 
 /**
@@ -79,10 +81,46 @@ export async function createQuickNoteHeading(docId: string, headingName: string)
             }
         });
 
+        // 3. 在标题块后插入空行，用于区分快速笔记区域和正常笔记区域
+        await fetchPostAsync('/api/block/insertBlock', {
+            dataType: 'markdown',
+            data: '',
+            previousID: headingId
+        });
+
         return headingId;
     } catch (error) {
         console.error('创建快速笔记标题失败:', error);
         throw error;
+    }
+}
+
+/**
+ * 查找快速笔记区域的最后一个块（空行分隔符之前的最后一个块）
+ * @param headingId 快速笔记标题块 ID
+ * @returns 最后一个块的 ID，如果没有则返回标题块 ID
+ */
+async function findLastQuickNoteBlock(headingId: string): Promise<string> {
+    try {
+        // 查询标题块后的所有快速笔记块，按文档顺序排序
+        const sql = `
+            SELECT b.id FROM blocks b
+            WHERE b.id IN (
+                SELECT block_id FROM attributes
+                WHERE name = '${QUICK_NOTE_ATTRS.NOTE}' AND value = 'true'
+            )
+            AND b.root_id = (SELECT root_id FROM blocks WHERE id = '${headingId}')
+            ORDER BY b.id DESC
+            LIMIT 1
+        `;
+
+        const result = await fetchPostAsync('/api/query/sql', { stmt: sql });
+
+        // 如果找到了笔记块，返回最后一个；否则返回标题块 ID
+        return result?.data?.[0]?.id || headingId;
+    } catch (error) {
+        console.error('查找最后一个快速笔记块失败:', error);
+        return headingId;
     }
 }
 
@@ -94,20 +132,25 @@ export async function createQuickNoteHeading(docId: string, headingName: string)
  */
 export async function addQuickNote(headingId: string, content: string): Promise<string> {
     try {
-        // 1. 在标题下添加列表项
-        const result = await fetchPostAsync('/api/block/appendBlock', {
+        // 1. 找到快速笔记区域的最后一个块
+        const lastBlockId = await findLastQuickNoteBlock(headingId);
+
+        // 2. 在最后一个块后插入新笔记
+        const result = await fetchPostAsync('/api/block/insertBlock', {
             dataType: 'markdown',
             data: `- ${content}`,
-            parentID: headingId
+            previousID: lastBlockId
         });
 
         const noteId = result.data[0].doOperations[0].id;
 
-        // 2. 设置自定义属性标记（方便 SQL 查询）
+        // 3. 设置自定义属性标记（方便 SQL 查询）
+        const createdTime = Date.now().toString(); // 毫秒级时间戳
         await fetchPostAsync('/api/attr/setBlockAttrs', {
             id: noteId,
             attrs: {
-                [QUICK_NOTE_ATTRS.NOTE]: 'true'
+                [QUICK_NOTE_ATTRS.NOTE]: 'true',
+                [QUICK_NOTE_ATTRS.CREATED]: createdTime
             }
         });
 

@@ -31,10 +31,30 @@
     let showSettings = false;
     let fileCards: FileCard[] = [];
     let isRefreshing = false;
+    let textareaElement: HTMLTextAreaElement;
 
     onMount(() => {
         loadConfig();
     });
+
+    /**
+     * 自动调整 textarea 高度
+     */
+    function autoResizeTextarea() {
+        if (!textareaElement) return;
+
+        // 重置高度以获取正确的 scrollHeight
+        textareaElement.style.height = 'auto';
+
+        // 设置新高度，限制在最小和最大值之间
+        const newHeight = Math.min(Math.max(textareaElement.scrollHeight, 42), 80);
+        textareaElement.style.height = `${newHeight}px`;
+    }
+
+    // 监听内容变化，自动调整高度
+    $: if (noteContent !== undefined && textareaElement) {
+        autoResizeTextarea();
+    }
 
     /**
      * 加载配置
@@ -247,12 +267,13 @@
     <!-- 底部：输入框和按钮 -->
     <div class="widget-content">
         <textarea
+            bind:this={textareaElement}
             bind:value={noteContent}
             on:keydown={handleKeydown}
+            on:input={autoResizeTextarea}
             placeholder="输入笔记内容（支持选择目标文件）..."
             class="note-input"
             disabled={isSending}
-            rows="1"
         ></textarea>
 
         <button
@@ -299,12 +320,12 @@
 
 <style>
     .quick-note-widget {
-        height: 100%;
         display: flex;
         flex-direction: column;
         background: var(--b3-theme-background);
         border-radius: 8px;
         overflow: hidden;
+        gap: 0;
     }
 
     .file-card-loading {
@@ -329,9 +350,9 @@
     }
 
     .widget-content {
-        flex: 1;
+        flex: 0 0 auto;
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         gap: 8px;
         padding: 8px 12px;
     }
@@ -346,10 +367,13 @@
         font-size: 14px;
         line-height: 1.5;
         font-family: inherit;
-        transition: border-color 0.2s;
+        transition: border-color 0.2s, height 0.1s ease;
+        box-sizing: border-box;
         min-height: 42px;
-        max-height: 120px;
-        resize: vertical;
+        max-height: 80px;
+        height: 42px;
+        resize: none;
+        overflow: hidden;
         overflow-y: auto;
     }
 
