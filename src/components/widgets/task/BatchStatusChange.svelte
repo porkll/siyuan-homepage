@@ -18,6 +18,9 @@
     let toStatus: string = '';
     let processing = false;
 
+    // 临时禁用批量操作功能
+    const FEATURE_DISABLED = true;
+
     // 计算受影响的任务数量（手动输入的 ID）
     $: affectedTasks = fromStatusId.trim()
         ? tasks.filter(task => task.status === fromStatusId.trim())
@@ -26,7 +29,7 @@
     $: affectedCount = affectedTasks.length;
 
     // 检查是否可以执行
-    $: canExecute = fromStatusId.trim() && toStatus && fromStatusId.trim() !== toStatus && affectedCount > 0;
+    $: canExecute = !FEATURE_DISABLED && fromStatusId.trim() && toStatus && fromStatusId.trim() !== toStatus && affectedCount > 0;
 
     // 执行批量修改
     async function executeBatchChange() {
@@ -56,6 +59,13 @@
 </script>
 
 <div class="batch-change-panel">
+    {#if FEATURE_DISABLED}
+        <div class="info-box error">
+            <p>🚧 该功能暂时关闭</p>
+            <p style="margin-top: 8px; font-size: 13px;">批量操作功能正在优化中，暂时无法使用。请等待后续版本更新。</p>
+        </div>
+    {/if}
+
     <p class="description">
         将所有指定状态的任务批量修改为另一个状态。支持输入任何状态 ID（包括历史遗留状态）。
     </p>
@@ -71,7 +81,7 @@
                 type="text"
                 bind:value={fromStatusId}
                 placeholder="例如: todo, old-status"
-                disabled={processing}
+                disabled={processing || FEATURE_DISABLED}
             />
         </div>
 
@@ -82,7 +92,7 @@
                 目标状态
                 <span class="hint-text">选择要修改为的状态</span>
             </label>
-            <select id="to-status" bind:value={toStatus} disabled={processing}>
+            <select id="to-status" bind:value={toStatus} disabled={processing || FEATURE_DISABLED}>
                 <option value="">-- 请选择 --</option>
                 {#each config.statuses as status}
                     <option value={status.id}>
